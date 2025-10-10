@@ -281,6 +281,7 @@ async function performLogin() {
       return;
     }
     setAuthToken(data.token);
+    localStorage.setItem("user", JSON.stringify(data.user)); // ✅ store user for profile load
     currentUser = data.user || null;
     hideLoginModal();
     await postLoginInit();
@@ -752,29 +753,30 @@ async function init() {
     }
 
     // Try to fetch profile to validate token
-    try {
-      const res = await fetch((API_BASE || "") + "/profile", { method: "GET", headers: Object.assign({}, authHeaders()) });
-      if (!res.ok) {
-        // token invalid or expired
-        console.warn("Profile fetch failed, showing login", res.status);
-        setAuthToken(null);
-        showLoginModal();
-        return;
-      }
-      const profile = await res.json();
-      currentUser = profile;
-      await postLoginInit();
-    } catch (e) {
-      console.error("Profile validation error", e);
-      setAuthToken(null);
-      showLoginModal();
-    }
-  } catch (err) {
-    console.error("App init error:", err);
-  }
+ const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
+if (!savedUser.email) {
+  console.warn("No user in localStorage, showing login");
+  showLoginModal();
+  return;
 }
 
-init();
+const res = await fetch((API_BASE || "") + "/profile", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: savedUser.email }),
+});
+
+if (!res.ok) {
+  console.warn("Profile fetch failed, showing login", res.status);
+  setAuthToken(null);
+  showLoginModal();
+  return;
+}
+
+const profile = await res.json();
+currentUser = profile;
+await postLoginInit(); 
+
 </script>
 </body>
 </html>
