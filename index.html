@@ -6,7 +6,7 @@
   <title>Call Bridge — Tech Talk Titans</title>
 
   <!-- Twilio Client SDK (keep as-is) -->
-  <script src="https://sdk.twilio.com/js/client/v1.13/twilio.min.js"></script>
+  <script src="https://media.twiliocdn.com/sdk/js/client/v2.0/twilio.min.js"></script>
 
   <style>
     :root{
@@ -362,80 +362,69 @@ async function initTwilioDevice() {
     assignedNumber = json.callerId || assignedNumber;
     setText("callerNumber", assignedNumber || "—");
 
-    // Defensive Twilio Device init
-    try {
-      if (typeof Twilio !== 'undefined' && Twilio.Device) {
-        // Preferred: Twilio.Device.setup(token)
-        if (typeof Twilio.Device.setup === 'function') {
-          Twilio.Device.setup(json.token);
-          device = Twilio.Device;
-          console.log("Twilio.Device.setup called");
-        } else if (typeof Twilio.Device === 'function') {
-          try {
-            device = new Twilio.Device(json.token, { debug: true });
-            console.log("Twilio.Device constructed with new Twilio.Device()");
-          } catch (e) {
-            if (typeof Twilio.Device.setup === 'function') {
-              Twilio.Device.setup(json.token);
-              device = Twilio.Device;
-              console.log("Fallback: Twilio.Device.setup called after constructor failed");
-            } else {
-              throw e;
-            }
-          }
-        } else {
-          if (typeof Twilio.Device.setup === 'function') {
-            Twilio.Device.setup(json.token);
-            device = Twilio.Device;
-            console.log("Twilio.Device.setup fallback");
-          } else {
-            throw new Error("Twilio client does not expose Device API as expected.");
-          }
-        }
+    // ✅ Twilio Voice v2 Initialization
+let twilioDevice = null;
+let currentConnection = null;
+
+async function initTwilioDevice(token) {
+  try {
+    console.log("🎧 Initializing Twilio Device with token...");
+
+    twilioDevice = new Twilio.Device(token, {
+      codecPreferences: ["opus", "pcmu"],
+      debug: true,
+      enableRingingState: true,
+    });
+
+    // --- Event handlers ---
+    twilioDevice.on("ready", () => console.log("✅ Twilio Device Ready"));
+    twilioDevice.on("error", err => console.error("❌ Twilio Device error:", err));
+    twilioDevice.on("incoming", conn => {
+      console.log("📞 Incoming call from:", conn.parameters.From);
+      if (confirm(`Incoming call from ${conn.parameters.From}. Accept?`)) {
+        conn.accept();
       } else {
-        throw new Error("Twilio SDK not loaded or Twilio.Device not available.");
+        conn.reject();
       }
-    } catch (e) {
-      console.error("Twilio device init failed:", e);
-      alert("Failed to initialize Twilio device. See console for details.");
-      return;
-    }
+    });
+    twilioDevice.on("connect", conn => {
+      currentConnection = conn;
+      console.log("🔊 Call connected");
+    });
+    twilioDevice.on("disconnect", () => {
+      console.log("📴 Call ended");
+      currentConnection = null;
+    });
 
-    // wire up events (support both on and addEventListener)
-    try {
-      const onReady = () => {
-        console.log("✅ Twilio Device ready");
-      };
-      const onError = (err) => {
-        console.error("Twilio Device error:", err);
-      };
-      const onConnect = (conn) => onDeviceConnect(conn);
-      const onDisconnect = () => onDeviceDisconnect();
-      const onIncoming = (conn) => onDeviceIncoming(conn);
-
-      if (typeof device.on === 'function') {
-        device.on("ready", onReady);
-        device.on("error", onError);
-        device.on("connect", onConnect);
-        device.on("disconnect", onDisconnect);
-        device.on("incoming", onIncoming);
-      } else if (typeof device.addEventListener === 'function') {
-        device.addEventListener("ready", onReady);
-        device.addEventListener("error", onError);
-        device.addEventListener("connect", onConnect);
-        device.addEventListener("disconnect", onDisconnect);
-        device.addEventListener("incoming", onIncoming);
-      } else {
-        console.warn("Twilio device does not support 'on' or 'addEventListener' — events may not work.");
-      }
-    } catch (e) {
-      console.warn("Error wiring Twilio events:", e);
-    }
-
+    console.log("✅ Twilio Device initialized successfully");
   } catch (err) {
-    console.error("initTwilioDevice error:", err);
+    console.error("Twilio device init failed:", err);
+    alert("Failed to initialize Twilio device. See console for details.");
   }
 }
+
+// ✅ To make a call:
+function startCall(toNumber) {
+  if (!twilioDevice) {
+    alert("Device not ready yet.");
+    return;
+  }
+  try {
+    console.log("Dialing", toNumber);
+    currentConnection = twilioDevice.connect({ params: { To: toNumber } });
+  } catch (err) {
+    console.error("Start call error:", err);
+  }
+}
+
+// ✅ To hang up:
+function hangUp() {
+  if (currentConnection) {
+    currentConnection.disconnect();
+    currentConnection = null;
+  }
+}
+
 
 /* ---------- start outgoing call ---------- */
 async function startCall() {
