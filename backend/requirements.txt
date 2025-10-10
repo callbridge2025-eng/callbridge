@@ -1,5 +1,8 @@
-Flask==2.2.5
-gspread==5.9.0
-google-auth==2.23.0
-flask-cors==3.0.10
-gunicorn==21.2.0
+Flask==3.0.3
+Flask-Cors==4.0.0
+gspread==6.1.2
+google-auth==2.33.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+twilio==9.2.3
+gunicorn==23.0.0
