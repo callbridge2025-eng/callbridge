@@ -340,9 +340,9 @@ async function loadProfile() {
     const p = await res.json();
     currentUser = currentUser || p || null;
 
-    setText("pEmail", p.email || (currentUser && currentUser.email) || "—");
+    setText("pEmail", (p.display_name || p.email) || "—");
     setText("pNumber", p.assigned_number || (currentUser && currentUser.assigned_number) || "—");
-    setText("pStatus", p.status || "—");
+    setText("pStatus", p.role || "Active");
     setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
     assignedNumber = p.assigned_number || assignedNumber || "—";
     setText("callerNumber", assignedNumber || "—");
