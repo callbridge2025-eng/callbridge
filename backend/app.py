@@ -10,6 +10,7 @@ from google.oauth2.service_account import Credentials
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
 from twilio.twiml.voice_response import VoiceResponse
+from twilio.twiml.voice_response import VoiceResponse, Dial
 
 # ---------------- Flask App ----------------
 app = Flask(__name__)
@@ -225,8 +226,6 @@ def voice():
         dial = resp.dial()
         dial.client("support")
     return str(resp)
-
-from twilio.twiml.voice_response import VoiceResponse, Dial
 
 @app.route("/voice", methods=["POST"])
 def voice():
