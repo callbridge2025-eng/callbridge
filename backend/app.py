@@ -15,6 +15,19 @@ from twilio.twiml.voice_response import VoiceResponse
 app = Flask(__name__)
 # Allow all origins for now (tighten to your domain in production)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+@app.before_request
+def handle_options():
+    if request.method == "OPTIONS":
+        resp = app.make_default_options_response()
+        headers = None
+        if "ACCESS_CONTROL_REQUEST_HEADERS" in request.headers:
+            headers = request.headers["ACCESS_CONTROL_REQUEST_HEADERS"]
+        h = resp.headers
+        h["Access-Control-Allow-Origin"] = "*"
+        h["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        h["Access-Control-Allow-Headers"] = headers or "Authorization, Content-Type"
+        return resp
+
 
 # Simple in-memory token map (replace with proper DB/JWT in production)
 TOKENS = {}
