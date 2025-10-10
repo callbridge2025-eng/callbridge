@@ -4,15 +4,16 @@ import gspread
 import os
 from flask_cors import CORS
 
-
 # ---------------------------
 # Flask App Setup
 # ---------------------------
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})  # ✅ add this line
 
 @app.route("/")
 def home():
     return jsonify({"message": "Backend is running!"})
+
 
 # ---------------------------
 # Google Sheets Setup
