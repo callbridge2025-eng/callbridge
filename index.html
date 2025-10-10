@@ -340,7 +340,7 @@ async function loadProfile() {
     const p = await res.json();
     currentUser = currentUser || p || null;
 
-    setText("pEmail", (p.display_name || p.email) || "—");
+    setText("pEmail", (p.display_name || p.email) || (currentUser && (currentUser.display_name || currentUser.email)) || "—");
     setText("pNumber", p.assigned_number || (currentUser && currentUser.assigned_number) || "—");
     setText("pStatus", p.role || "Active");
     setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
@@ -350,6 +350,8 @@ async function loadProfile() {
     console.error("loadProfile error", e);
   }
 }
+
+ 
 
 /* ---------- initialize Twilio Device by requesting token from backend ---------- */
 async function initTwilioDevice() {
