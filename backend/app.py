@@ -53,16 +53,19 @@ def login():
 
     for user in users:
         if user.get("Email") == email and user.get("Password") == password:
+            # ✅ Updated structure for frontend compatibility
             return jsonify({
-                "success": True,
-                "email": email,
-                "display_name": user.get("Display Name"),
-                "assigned_number": user.get("Assigned Number"),
-                "expiry_date": user.get("Expiry Date"),
-                "role": user.get("Role")
+                "token": "dummy-token-123",  # temporary until we add JWT
+                "user": {
+                    "email": email,
+                    "display_name": user.get("Display Name"),
+                    "assigned_number": user.get("Assigned Number"),
+                    "expiry_date": user.get("Expiry Date"),
+                    "role": user.get("Role"),
+                }
             })
 
-    return jsonify({"success": False, "error": "Invalid credentials"}), 401
+    return jsonify({"error": "Invalid credentials"}), 401
 
 
 # ---------------------------
