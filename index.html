@@ -737,10 +737,23 @@ async function init() {
     await ensureMic();
 
     const token = getAuthToken();
-    if (!token) {
-      showLoginModal();
+    const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
+
+    if (token && savedUser.email) {
+      console.log("🔁 Auto-login from localStorage");
+      currentUser = savedUser;
+      await postLoginInit();
       return;
     }
+
+    console.warn("No saved session, showing login modal");
+    showLoginModal();
+  } catch (err) {
+    console.error("App init error:", err);
+    showLoginModal();
+  }
+}
+
 
     // Try to fetch profile to validate token
     try {
