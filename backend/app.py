@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from google.oauth2.service_account import Credentials
 import gspread
 import os
+from flask_cors import CORS
+
 
 # ---------------------------
 # Flask App Setup
