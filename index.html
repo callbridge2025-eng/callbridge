@@ -327,12 +327,23 @@ async function remoteSaveCall(payload) {
 }
 
 /* ---------- load user profile from backend ---------- */
-async function loadProfile() {
+  async function loadProfile() {
   try {
+    // Ensure we have a user from login
+    const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    if (!savedUser.email) {
+      console.warn("No user in localStorage");
+      return;
+    }
+
     const res = await fetch((API_BASE || "") + "/profile", {
-      method: "GET",
-      headers: Object.assign({}, authHeaders())
+      method: "POST", // ✅ CHANGED to POST
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: savedUser.email }), // ✅ send email to backend
     });
+
     if (!res.ok) {
       console.warn("Profile fetch failed with", res.status);
       return;
@@ -341,22 +352,12 @@ async function loadProfile() {
     const p = await res.json();
     console.log("PROFILE RESPONSE:", p);
 
-    // Store user data properly
-    currentUser = {
-      email: p.email,
-      display_name: p.display_name,
-      assigned_number: p.assigned_number,
-      role: p.role,
-      expiry_date: p.expiry_date
-    };
-
-    // Update UI
+    // Save and display profile
+    currentUser = p;
     setText("pEmail", p.email || "—");
     setText("pNumber", p.assigned_number || "—");
     setText("pStatus", p.role || "Active");
     setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
-
-    // Update the “Your Virtual Number” section
     assignedNumber = p.assigned_number || "—";
     setText("callerNumber", assignedNumber);
   } catch (e) {
@@ -364,6 +365,7 @@ async function loadProfile() {
   }
 }
 
+ 
 
 /* ---------- initialize Twilio Device by requesting token from backend ---------- */
 async function initTwilioDevice() {
