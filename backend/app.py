@@ -1,65 +1,50 @@
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
-import os
-import secrets
-import time
-import traceback
+import os, secrets, time, traceback
 
 # Google Sheets
 import gspread
 from google.oauth2.service_account import Credentials
 
-# Twilio Access Token
+# Twilio
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
+from twilio.twiml.voice_response import VoiceResponse
 
-# ------------- Flask app -------------
+# ---------------- Flask App ----------------
 app = Flask(__name__)
-# allow all origins (adjust to specific origin for production if desired)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-# ------------- In-memory token store -------------
-# token -> email mapping (simple; replace with persistent store / JWT for production)
 TOKENS = {}
 
-# ------------- Google Sheets setup -------------
-# Expect credentials.json present in app root (don't commit to git)
+# ---------------- Google Sheets Setup ----------------
 CREDS_FILE = os.environ.get("GOOGLE_CREDS_FILE", "credentials.json")
-SHEET_URL = os.environ.get("GOOGLE_SHEET_URL", None)
-
+SHEET_URL = os.environ.get("GOOGLE_SHEET_URL")
 if not SHEET_URL:
-    raise RuntimeError("Missing GOOGLE_SHEET_URL environment variable")
+    raise RuntimeError("Missing GOOGLE_SHEET_URL")
 
-try:
-    creds = Credentials.from_service_account_file(
-        CREDS_FILE,
-        scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    )
-    gc = gspread.authorize(creds)
-    sh = gc.open_by_url(SHEET_URL)
-    users_ws = sh.worksheet("Users")
-    calls_ws = sh.worksheet("CallLogs")
-except Exception as e:
-    print("Error initializing Google Sheets:", e)
-    raise
+creds = Credentials.from_service_account_file(
+    CREDS_FILE,
+    scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+)
+gc = gspread.authorize(creds)
+sh = gc.open_by_url(SHEET_URL)
+users_ws = sh.worksheet("Users")
+calls_ws = sh.worksheet("CallLogs")
 
-# ------------- Helpers -------------
+# ---------------- Helpers ----------------
 def find_user_by_email(email):
-    try:
-        rows = users_ws.get_all_records()
-        for r in rows:
-            if str(r.get("Email", "")).strip().lower() == str(email).strip().lower():
-                # standardize keys used by frontend
-                return {
-                    "id": r.get("Email"),
-                    "email": r.get("Email"),
-                    "display_name": r.get("Display Name"),
-                    "assigned_number": r.get("Assigned Number"),
-                    "expiry_date": r.get("Expiry Date"),
-                    "role": r.get("Role"),
-                }
-    except Exception:
-        traceback.print_exc()
+    rows = users_ws.get_all_records()
+    for r in rows:
+        if str(r.get("Email", "")).strip().lower() == str(email).strip().lower():
+            return {
+                "id": r.get("Email"),
+                "email": r.get("Email"),
+                "display_name": r.get("Display Name"),
+                "assigned_number": r.get("Assigned Number"),
+                "expiry_date": r.get("Expiry Date"),
+                "role": r.get("Role"),
+            }
     return None
 
 def auth_from_token(header):
@@ -70,11 +55,16 @@ def auth_from_token(header):
         return TOKENS.get(token)
     return None
 
-# ------------- Routes -------------
+def _ok_cors():
+    resp = make_response("", 200)
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    return resp
 
+# ---------------- Routes ----------------
 @app.after_request
-def add_cors_headers(response):
-    # Ensure these headers to satisfy preflight when necessary
+def after_request(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
@@ -84,174 +74,128 @@ def add_cors_headers(response):
 def home():
     return jsonify({"message": "Backend is running!"})
 
+# ---------- LOGIN ----------
 @app.route("/login", methods=["POST", "OPTIONS"])
 def login():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
         data = request.get_json(force=True)
-        email = data.get("email")
-        password = data.get("password")
-        if not email or not password:
-            return jsonify({"error": "email and password required"}), 400
+        email, password = data.get("email"), data.get("password")
 
-        # fetch users from sheet
         rows = users_ws.get_all_records()
         for r in rows:
-            if str(r.get("Email", "")).strip().lower() == str(email).strip().lower() and str(r.get("Password","")) == str(password):
-                # create token
+            if r.get("Email") == email and str(r.get("Password")) == str(password):
                 token = secrets.token_urlsafe(32)
-                TOKENS[token] = r.get("Email")
-                user = {
-                    "id": r.get("Email"),
-                    "email": r.get("Email"),
-                    "display_name": r.get("Display Name"),
-                    "assigned_number": r.get("Assigned Number"),
-                    "expiry_date": r.get("Expiry Date"),
-                    "role": r.get("Role"),
-                }
+                TOKENS[token] = email
+                user = find_user_by_email(email)
                 return jsonify({"token": token, "user": user})
-
         return jsonify({"error": "Invalid credentials"}), 401
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/profile", methods=["GET", "POST", "OPTIONS"])
+# ---------- PROFILE ----------
+@app.route("/profile", methods=["POST", "OPTIONS"])
 def profile():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        # 1) If POST with JSON containing email -> return profile by email (frontend uses this)
-        if request.method == "POST":
-            data = request.get_json(force=True)
-            email = data.get("email")
-            if not email:
-                return jsonify({"error": "email required"}), 400
-            user = find_user_by_email(email)
-            if not user:
-                return jsonify({"error": "User not found"}), 404
+        data = request.get_json(force=True)
+        email = data.get("email")
+        user = find_user_by_email(email)
+        if user:
             return jsonify(user)
-
-        # 2) If GET with Authorization Bearer <token> -> return profile for token
-        auth = request.headers.get("Authorization", "")
-        email = auth_from_token(auth)
-        if email:
-            user = find_user_by_email(email)
-            if user:
-                return jsonify(user)
-            else:
-                return jsonify({"error": "User not found"}), 404
-        return jsonify({"error": "Unauthorized"}), 401
+        return jsonify({"error": "User not found"}), 404
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"error": str(e)}), 500
 
+# ---------- CALL HISTORY ----------
 @app.route("/calls", methods=["GET", "OPTIONS"])
 def get_calls():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        # optional: return all calls or filter by user (query or token)
-        auth = request.headers.get("Authorization", "")
-        email = auth_from_token(auth)
         rows = calls_ws.get_all_records()
-        # map to consistent keys expected by frontend
         calls = []
         for r in rows:
             calls.append({
-                "created_at": r.get("Timestamp") or r.get("timestamp") or r.get("Timestamp (UTC)") or None,
-                "from_number": r.get("From") or r.get("from") or r.get("From Number"),
-                "to_number": r.get("To") or r.get("to") or r.get("To Number"),
-                "duration": r.get("Duration") or r.get("duration") or 0,
-                "user_email": r.get("User Email") or r.get("User") or r.get("user_email"),
-                "call_type": r.get("Call Type") or r.get("call_type"),
-                "status": r.get("Notes") or r.get("Notes / Status") or r.get("status")
+                "created_at": r.get("Timestamp") or r.get("timestamp"),
+                "from_number": r.get("From"),
+                "to_number": r.get("To"),
+                "duration": r.get("Duration"),
+                "user_email": r.get("User Email"),
+                "call_type": r.get("Call Type"),
+                "status": r.get("Notes")
             })
-        # if email present, filter to that user
-        if email:
-            calls = [c for c in calls if (c.get("user_email") or "").strip().lower() == email.strip().lower()]
-        # return most recent first
-        calls = list(reversed(calls))
-        return jsonify(calls)
+        return jsonify(list(reversed(calls)))
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"error": str(e)}), 500
 
+# ---------- SAVE CALL ----------
 @app.route("/save-call", methods=["POST", "OPTIONS"])
 def save_call():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        data = request.get_json(force=True)
-        # expected fields: created_at/timestamp, phone_number/from/to, duration, user_email, call_type, status/notes
-        timestamp = data.get("created_at") or data.get("timestamp") or time.strftime("%Y-%m-%d %H:%M:%S")
-        from_num = data.get("phone_number") if data.get("call_type") == "incoming" else (data.get("from") or "")
-        to_num = data.get("phone_number") if data.get("call_type") == "outgoing" else (data.get("to") or "")
-        # graceful fallback
-        from_num = from_num or data.get("from") or ""
-        to_num = to_num or data.get("to") or ""
-        duration = int(data.get("duration", 0))
-        user_email = data.get("user_email") or data.get("user_id") or data.get("user") or ""
-        call_type = data.get("call_type") or ""
-        notes = data.get("status") or data.get("notes") or ""
-
-        # Append in the order matching your sheet: Timestamp From To Duration User Email Call Type Notes
-        calls_ws.append_row([timestamp, from_num, to_num, duration, user_email, call_type, notes])
+        d = request.get_json(force=True)
+        ts = d.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S")
+        calls_ws.append_row([
+            ts, d.get("from"), d.get("to"),
+            d.get("duration"), d.get("user_email"),
+            d.get("call_type"), d.get("status")
+        ])
         return jsonify({"success": True})
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"error": str(e)}), 500
 
+# ---------- TWILIO TOKEN ----------
 @app.route("/twilio-token", methods=["POST", "OPTIONS"])
 def twilio_token():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        data = request.get_json(force=True)
-        user_id = data.get("user_id") or data.get("user") or None
-        # If no user_id provided, try from Authorization token
-        if not user_id:
-            auth = request.headers.get("Authorization", "")
-            email = auth_from_token(auth)
-            user_id = email
-
+        d = request.get_json(force=True)
+        user_id = d.get("user_id")
         if not user_id:
             return jsonify({"error": "user_id required"}), 400
 
-        # required env vars
-        ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-        API_KEY_SID = os.environ.get("TWILIO_API_KEY_SID")
-        API_KEY_SECRET = os.environ.get("TWILIO_API_KEY_SECRET")
-        TWIML_APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")
+        ACC = os.environ.get("TWILIO_ACCOUNT_SID")
+        KEY = os.environ.get("TWILIO_API_KEY_SID")
+        SECRET = os.environ.get("TWILIO_API_KEY_SECRET")
+        APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")
 
-        if not ACCOUNT_SID or not API_KEY_SID or not API_KEY_SECRET:
-            return jsonify({"error": "Twilio configuration missing"}), 500
-
-        # create AccessToken
-        token = AccessToken(ACCOUNT_SID, API_KEY_SID, API_KEY_SECRET, identity=str(user_id))
-        voice_grant = VoiceGrant(outgoing_application_sid=TWIML_APP_SID, incoming_allow=True)
+        token = AccessToken(ACC, KEY, SECRET, identity=user_id)
+        voice_grant = VoiceGrant(outgoing_application_sid=APP_SID, incoming_allow=True)
         token.add_grant(voice_grant)
-        jwt = token.to_jwt().decode("utf-8") if isinstance(token.to_jwt(), bytes) else token.to_jwt()
 
-        # Also find user's assigned number (for callerId)
         user = find_user_by_email(user_id)
-        caller_id = user.get("assigned_number") if user else None
+        caller_id = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
 
-        return jsonify({"token": jwt, "callerId": caller_id})
+        return jsonify({
+            "token": token.to_jwt().decode("utf-8"),
+            "callerId": caller_id
+        })
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"error": str(e)}), 500
 
-# small helper for preflight
-def _ok_cors():
-    resp = make_response("", 200)
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
-    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    return resp
+# ---------- TWILIO VOICE WEBHOOK ----------
+@app.route("/voice", methods=["POST"])
+def voice():
+    response = VoiceResponse()
+    to_number = request.form.get("To")
+    if to_number:
+        dial = response.dial(callerId=os.environ.get("TWILIO_PHONE_NUMBER"))
+        dial.number(to_number)
+    else:
+        dial = response.dial()
+        dial.client("support")
+    return str(response)
 
-# ------------- Run -------------
+# ---------------- Run ----------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
