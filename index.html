@@ -173,17 +173,10 @@
   </div>
 
 <script>
-/* ================== CONFIG - set this to your Render backend URL ==================
+/* ================== CONFIG - set this to your backend URL ==================
    Example: const API_BASE = "https://my-call-backend.onrender.com";
-   When you deploy backend to Render, replace the string below with that URL.
-   The frontend will make requests to:
-     POST   ${API_BASE}/login        { email, password }
-     POST   ${API_BASE}/logout
-     GET    ${API_BASE}/profile      (Authorization: Bearer <token>)
-     POST   ${API_BASE}/twilio-token { user_id }
-     GET    ${API_BASE}/calls        (Authorization: Bearer <token>)
-     POST   ${API_BASE}/save-call    (Authorization: Bearer <token>)
-============================================================================= */
+   Replace below with your Render URL (https://callbridge.onrender.com).
+*/
 const API_BASE = "https://callbridge.onrender.com"
 
 /* small helpers */
@@ -204,11 +197,11 @@ let historyPollInterval = null;
 /* Save endpoint - single backend endpoint */
 const SAVE_ENDPOINTS = [ (API_BASE || "") + "/save-call" ];
 
-/* ---------- microphone permission (unchanged) ---------- */
+/* ---------- microphone permission ---------- */
 async function ensureMic() {
   if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') {
     console.warn("navigator.mediaDevices not available in this environment.");
-    alert("Microphone APIs are not available in this browser. Some features may not work.");
+    // not fatal — allow app to continue, but warn user
     return false;
   }
 
@@ -218,26 +211,15 @@ async function ensureMic() {
 
     if (!hasAudioInput) {
       console.warn("No audio input devices found (enumerateDevices).");
-      alert("No microphone detected. Please connect a microphone if you want to make/receive audio calls.");
       return false;
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log("✅ Microphone permission granted");
     try { stream.getTracks().forEach(t => t.stop()); } catch (e) { /* ignore */ }
     return true;
   } catch (err) {
-    console.error("getUserMedia error:", err);
-    if (err && (err.name === "NotFoundError" || err.name === "DevicesNotFoundError")) {
-      alert("No microphone device found. Connect a microphone and reload the page if you need audio.");
-      return false;
-    } else if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
-      alert("Microphone permission denied. Please allow microphone access and reload the page.");
-      return false;
-    } else {
-      console.warn("getUserMedia unknown error, continuing without mic:", err);
-      return false;
-    }
+    console.warn("getUserMedia error (continuing without mic):", err);
+    return false;
   }
 }
 
@@ -275,13 +257,13 @@ async function performLogin() {
       return;
     }
     const data = await res.json();
-    if (!data || !data.token) {
+    if (!data || !data.token || !data.user) {
       $("loginError").innerText = "Invalid login response from server.";
       $("loginError").style.display = "block";
       return;
     }
     setAuthToken(data.token);
-    localStorage.setItem("user", JSON.stringify(data.user)); // ✅ store user for profile load
+    localStorage.setItem("user", JSON.stringify(data.user)); // store user for profile load
     currentUser = data.user || null;
     hideLoginModal();
     await postLoginInit();
@@ -298,9 +280,8 @@ async function performLogout() {
   } catch(_) {}
   setAuthToken(null);
   currentUser = null;
-  // stop polling
+  localStorage.removeItem("user");
   if (historyPollInterval) { clearInterval(historyPollInterval); historyPollInterval = null; }
-  // show login
   showLoginModal();
 }
 
@@ -328,7 +309,7 @@ async function remoteSaveCall(payload) {
 }
 
 /* ---------- load user profile from backend ---------- */
-  async function loadProfile() {
+async function loadProfile() {
   try {
     // Ensure we have a user from login
     const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -338,11 +319,9 @@ async function remoteSaveCall(payload) {
     }
 
     const res = await fetch((API_BASE || "") + "/profile", {
-      method: "POST", // ✅ CHANGED to POST
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email: savedUser.email }), // ✅ send email to backend
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: savedUser.email })
     });
 
     if (!res.ok) {
@@ -366,8 +345,6 @@ async function remoteSaveCall(payload) {
   }
 }
 
- 
-
 /* ---------- initialize Twilio Device by requesting token from backend ---------- */
 async function initTwilioDevice() {
   try {
@@ -386,20 +363,19 @@ async function initTwilioDevice() {
     let json;
     try { json = JSON.parse(raw); } catch (e) {
       console.error("Invalid /twilio-token response:", raw);
-      alert("Invalid token response from server. See console for raw output.");
-      throw new Error("Invalid /twilio-token response.");
+      // not fatal for UI — Twilio features will be disabled
+      return;
     }
 
     if (!json || !json.token) {
-      console.error("twilio-token returned without token:", json);
-      alert("No Twilio token returned from server. Check server logs.");
-      throw new Error("No Twilio token");
+      console.warn("No Twilio token returned, skipping Twilio init.", json);
+      return;
     }
 
     assignedNumber = json.callerId || assignedNumber;
     setText("callerNumber", assignedNumber || "—");
 
-    // Defensive Twilio Device init
+    // Defensive Twilio Device init (best-effort)
     try {
       if (typeof Twilio !== 'undefined' && Twilio.Device) {
         if (typeof Twilio.Device.setup === 'function') {
@@ -414,50 +390,28 @@ async function initTwilioDevice() {
             if (typeof Twilio.Device.setup === 'function') {
               Twilio.Device.setup(json.token);
               device = Twilio.Device;
-              console.log("Fallback: Twilio.Device.setup called after constructor failed");
             } else {
               throw e;
             }
           }
-        } else {
-          if (typeof Twilio.Device.setup === 'function') {
-            Twilio.Device.setup(json.token);
-            device = Twilio.Device;
-            console.log("Twilio.Device.setup fallback");
-          } else {
-            throw new Error("Twilio client does not expose Device API as expected.");
-          }
         }
-      } else {
-        throw new Error("Twilio SDK not loaded or Twilio.Device not available.");
       }
     } catch (e) {
-      console.error("Twilio device init failed:", e);
-      alert("Failed to initialize Twilio device. See console for details.");
-      return;
+      console.warn("Twilio init failed:", e);
     }
 
-    // wire up events
-    try {
-      if (typeof device.on === 'function') {
-        device.on("ready", () => console.log("✅ Twilio Device ready"));
-        device.on("error", (err) => console.error("Twilio Device error:", err));
-        device.on("connect", onDeviceConnect);
-        device.on("disconnect", onDeviceDisconnect);
-        device.on("incoming", onDeviceIncoming);
-      } else if (typeof device.addEventListener === 'function') {
-        device.addEventListener("ready", () => console.log("✅ Twilio Device ready"));
-        device.addEventListener("error", (err) => console.error("Twilio Device error:", err));
-        device.addEventListener("connect", onDeviceConnect);
-        device.addEventListener("disconnect", onDeviceDisconnect);
-        device.addEventListener("incoming", onDeviceIncoming);
-      } else {
-        console.warn("Twilio device does not support 'on' or 'addEventListener' — events may not work.");
-      }
-    } catch (e) {
-      console.warn("Error wiring Twilio events:", e);
+    // wire up events (if device exists)
+    if (device) {
+      try {
+        if (typeof device.on === 'function') {
+          device.on("ready", () => console.log("✅ Twilio Device ready"));
+          device.on("error", (err) => console.error("Twilio Device error:", err));
+          device.on("connect", onDeviceConnect);
+          device.on("disconnect", onDeviceDisconnect);
+          device.on("incoming", onDeviceIncoming);
+        }
+      } catch (e) { console.warn("Error wiring Twilio events:", e); }
     }
-
   } catch (err) {
     console.error("initTwilioDevice error:", err);
   }
@@ -747,36 +701,39 @@ async function init() {
     await ensureMic();
 
     const token = getAuthToken();
+    // If no token -> show login
     if (!token) {
       showLoginModal();
       return;
     }
 
-    // Try to fetch profile to validate token
- const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
-if (!savedUser.email) {
-  console.warn("No user in localStorage, showing login");
-  showLoginModal();
-  return;
+    // If token exists, verify via GET /profile (auth)
+    try {
+      const res = await fetch((API_BASE || "") + "/profile", { method: "GET", headers: Object.assign({}, authHeaders()) });
+      if (!res.ok) {
+        // token invalid or expired -> remove and show login
+        setAuthToken(null);
+        localStorage.removeItem("user");
+        showLoginModal();
+        return;
+      }
+      const profile = await res.json();
+      currentUser = profile;
+      localStorage.setItem("user", JSON.stringify(profile));
+      await postLoginInit();
+    } catch (e) {
+      console.error("Profile validation error", e);
+      setAuthToken(null);
+      localStorage.removeItem("user");
+      showLoginModal();
+    }
+  } catch (err) {
+    console.error("App init error:", err);
+    showLoginModal();
+  }
 }
 
-const res = await fetch((API_BASE || "") + "/profile", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: savedUser.email }),
-});
-
-if (!res.ok) {
-  console.warn("Profile fetch failed, showing login", res.status);
-  setAuthToken(null);
-  showLoginModal();
-  return;
-}
-
-const profile = await res.json();
-currentUser = profile;
-await postLoginInit(); 
-
+init();
 </script>
 </body>
 </html>
