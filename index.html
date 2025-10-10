@@ -1,789 +1,229 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Call Bridge — Tech Talk Titans</title>
-
-  <!-- Twilio Client SDK (keep as-is) -->
-  <script src="https://media.twiliocdn.com/sdk/js/client/v1.13/twilio.min.js"></script>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CallBridge</title>
   <style>
-    :root{
-      --bg:#f4f6f9; --card:#ffffff; --muted:#6b7280; --accent:#2563eb; --green:#10b981;
-      --danger:#ef4444; --shadow: 0 8px 30px rgba(2,6,23,0.08);
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f9fafb;
+      margin: 0;
+      padding: 0;
     }
-    *{box-sizing:border-box;font-family:Inter,Segoe UI,Arial;}
-    html,body{height:100%;margin:0;background:var(--bg)}
-    body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;padding:18px}
-
-    .panel{background:var(--card);border-radius:12px;padding:18px;box-shadow:var(--shadow);height:calc(100vh - 36px);overflow:auto}
-    h2{margin:0 0 8px 0}
-    .muted{color:var(--muted);font-size:13px}
-
-    /* Left - Dialpad / Active Call */
-    #left { display:flex;flex-direction:column; gap:12px; align-items:center }
-    #callerNumber { font-weight:700; color:#111827; }
-    input#dialInput { width:220px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;font-size:16px }
-
-    .key-row{display:flex;gap:8px;margin-top:8px}
-    .key{width:64px;height:64px;border-radius:10px;border:1px solid #e6e9ef;background:#fafbff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-    .key.primary{background:var(--accent);color:#fff;border:none}
-
-    .controls{display:flex;gap:10px;margin-top:12px}
-    .btn{padding:10px 14px;border-radius:10px;border:none;cursor:pointer;color:#fff}
-    .btn.call{background:var(--green)} .btn.hang{background:var(--danger)} .btn.gray{background:#374151}
-
-    /* active call controls */
-    #activeArea{display:none;flex-direction:column;align-items:center;gap:8px}
-    #waveWrap{display:flex;gap:6px;align-items:flex-end;height:40px}
-
-    /* middle - history */
-    #historyList{display:flex;flex-direction:column;gap:10px}
-    .history-item{padding:10px;border-radius:10px;border:1px solid #eef2ff;background:#fff;display:flex;justify-content:space-between;align-items:center}
-    .badge{padding:6px 8px;border-radius:999px;background:#f1f5f9;font-size:12px;color:var(--muted)}
-
-    /* right - profile */
-    .profile-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #f3f4f6}
-
-    /* incoming modal */
-    #incomingModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:9999;align-items:center;justify-content:center}
-    .modalCard{background:white;padding:22px;border-radius:12px;width:360px;text-align:center;box-shadow:0 12px 40px rgba(2,6,23,0.12)}
-    .modalBtns{display:flex;gap:12px;justify-content:center;margin-top:12px}
-
-    @keyframes pulse {
-      0%{transform:scale(0.95);opacity:0.8}50%{transform:scale(1.08);opacity:1}100%{transform:scale(0.95);opacity:0.8}
+    header {
+      background: #111827;
+      color: #fff;
+      padding: 1rem;
+      text-align: center;
     }
-
-    .ringDot{width:72px;height:72px;border-radius:50%;background:var(--green);margin:10px auto;animation:pulse 1.2s infinite}
-    @media (max-width:900px){body{grid-template-columns:1fr;} }
-
-    /* Login modal overrides (keeps the same card style) */
-    #loginModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10000;align-items:center;justify-content:center}
-    #loginModal .modalCard { width:360px;text-align:left; }
-    #loginModal input { width:100%; padding:10px; border-radius:8px; border:1px solid #e6e9ef; margin-top:8px; }
+    .container {
+      max-width: 600px;
+      margin: 2rem auto;
+      background: #fff;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .dialpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: .5rem;
+    }
+    .dialpad button {
+      font-size: 1.5rem;
+      padding: 1rem;
+      border-radius: .5rem;
+      border: 1px solid #ccc;
+      background: #f3f4f6;
+      cursor: pointer;
+    }
+    .hidden { display: none; }
+    #status { margin: .5rem 0; color: #059669; }
   </style>
 </head>
 <body>
+  <header><h1>CallBridge</h1></header>
 
-  <!-- LEFT: Dialpad / Active Call -->
-  <div id="left" class="panel">
-    <div style="width:100%;display:flex;justify-content:space-between;align-items:center">
-      <h2>Call Bridge</h2>
-      <div class="muted">Tech Talk Titans</div>
-    </div>
-
-    <div style="text-align:center">
-      <div class="muted">Your Virtual Number</div>
-      <div id="callerNumber">Loading...</div>
-    </div>
-
-    <!-- Dialpad -->
-    <div id="dialpadArea" style="display:flex;flex-direction:column;align-items:center;margin-top:6px">
-      <input id="dialInput" placeholder="+1..." />
-      <div style="margin-top:12px">
-        <div class="key-row">
-          <button class="key" data-key="1">1</button>
-          <button class="key" data-key="2">2</button>
-          <button class="key" data-key="3">3</button>
-        </div>
-        <div class="key-row">
-          <button class="key" data-key="4">4</button>
-          <button class="key" data-key="5">5</button>
-          <button class="key" data-key="6">6</button>
-        </div>
-        <div class="key-row">
-          <button class="key" data-key="7">7</button>
-          <button class="key" data-key="8">8</button>
-          <button class="key" data-key="9">9</button>
-        </div>
-        <div class="key-row">
-          <button class="key" data-key=""></button>
-          <button class="key" data-key="0">0</button>
-          <button class="key" data-key="#">#</button>
-        </div>
-      </div>
-
-      <div class="controls" style="margin-top:12px">
-        <button id="startCallBtn" class="btn call">📞 Call</button>
-        <button id="hangupBtn" class="btn hang" style="display:none">✖ Hangup</button>
-      </div>
-    </div>
-
-    <!-- Active call area -->
-    <div id="activeArea">
-      <div id="activeLabel" style="font-weight:700">In Call</div>
-      <div id="callTimer" class="muted">00:00</div>
-      <div id="waveWrap"></div>
-      <div class="controls" style="margin-top:10px">
-        <button id="muteBtn" class="btn gray">Mute</button>
-        <button id="holdBtn" class="btn gray">Hold</button>
-      </div>
-    </div>
+  <div class="container" id="loginBox">
+    <h2>Login</h2>
+    <input id="email" placeholder="Email" type="email" style="width:100%;padding:.5rem;margin-bottom:.5rem">
+    <input id="password" placeholder="Password" type="password" style="width:100%;padding:.5rem;margin-bottom:.5rem">
+    <button onclick="performLogin()" style="width:100%;padding:.75rem;background:#2563eb;color:#fff;border:none;border-radius:.5rem;">Login</button>
   </div>
 
-  <!-- MIDDLE: Call History -->
-  <div id="middle" class="panel">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>Call History</h2>
-      <div class="muted">Latest</div>
-    </div>
+  <div class="container hidden" id="appBox">
+    <h2>Welcome, <span id="displayName">User</span></h2>
+    <p>Email: <span id="pEmail">—</span></p>
+    <p>Number: <span id="pNumber">—</span></p>
+    <p>Expires: <span id="pExpiry">—</span></p>
+    <p id="status">Device not ready</p>
 
-    <div id="historyList" style="margin-top:12px">
-      <div class="muted">Loading call history...</div>
+    <input id="phoneNumber" placeholder="Enter number" style="width:100%;padding:.5rem;margin-bottom:.5rem">
+    <div class="dialpad">
+      <button onclick="appendDigit('1')">1</button>
+      <button onclick="appendDigit('2')">2</button>
+      <button onclick="appendDigit('3')">3</button>
+      <button onclick="appendDigit('4')">4</button>
+      <button onclick="appendDigit('5')">5</button>
+      <button onclick="appendDigit('6')">6</button>
+      <button onclick="appendDigit('7')">7</button>
+      <button onclick="appendDigit('8')">8</button>
+      <button onclick="appendDigit('9')">9</button>
+      <button onclick="appendDigit('*')">*</button>
+      <button onclick="appendDigit('0')">0</button>
+      <button onclick="appendDigit('#')">#</button>
     </div>
+    <button id="callBtn" onclick="makeCall()" style="width:100%;padding:.75rem;background:#16a34a;color:#fff;border:none;border-radius:.5rem;margin-top:1rem;">Call</button>
+    <button onclick="hangup()" style="width:100%;padding:.75rem;background:#dc2626;color:#fff;border:none;border-radius:.5rem;margin-top:.5rem;">Hang Up</button>
   </div>
 
-  <!-- RIGHT: Profile -->
-  <div id="right" class="panel">
-    <h2>My Profile</h2>
-    <div class="profile-row"><div class="muted">Email</div><div id="pEmail">Loading...</div></div>
-    <div class="profile-row"><div class="muted">Assigned Number</div><div id="pNumber">Loading...</div></div>
-    <div class="profile-row"><div class="muted">Status</div><div id="pStatus">Loading...</div></div>
-    <div class="profile-row"><div class="muted">Valid Until</div><div id="pExpiry">Loading...</div></div>
-    <div style="margin-top:14px"><button id="logoutBtn" class="btn hang" style="width:100%">Logout</button></div>
-  </div>
+  <script src="https://sdk.twilio.com/js/client/v1.13/twilio.min.js"></script>
+  <script>
+    const API_BASE = "https://callbridge.onrender.com"; // your backend URL
+    let currentUser = null;
+    let device = null;
 
-  <!-- Incoming Call Modal -->
-  <div id="incomingModal" style="display:none;align-items:center;justify-content:center" >
-    <div class="modalCard">
-      <div style="font-weight:700;font-size:18px">Incoming Call</div>
-      <div id="incomingFrom" class="muted" style="margin-top:6px">From: —</div>
-      <div class="ringDot"></div>
-      <div class="modalBtns">
-        <button id="answerBtn" class="btn call">Answer</button>
-        <button id="declineBtn" class="btn hang">Decline</button>
-      </div>
-    </div>
-  </div>
+    async function performLogin() {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value.trim();
 
-  <!-- Login Modal (new) -->
-  <div id="loginModal" style="display:none;align-items:center;justify-content:center">
-    <div class="modalCard">
-      <div style="font-weight:700;font-size:18px">Sign in</div>
-      <div class="muted" style="margin-top:6px">Sign in with the email & password assigned to you.</div>
-      <input id="loginEmail" placeholder="Email" type="email" />
-      <input id="loginPassword" placeholder="Password" type="password" />
-      <div style="display:flex;gap:10px;margin-top:12px">
-        <button id="loginBtn" class="btn call" style="flex:1">Login</button>
-        <button id="loginCancelBtn" class="btn gray" style="flex:1;display:none">Cancel</button>
-      </div>
-      <div id="loginError" class="muted" style="color:var(--danger);margin-top:10px;display:none"></div>
-    </div>
-  </div>
+      try {
+        const res = await fetch(API_BASE + "/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+        if (!res.ok) throw new Error("Invalid credentials");
 
-<script>
-/* ================== CONFIG - set this to your Render backend URL ==================
-   Example: const API_BASE = "https://my-call-backend.onrender.com";
-============================================================================= */
-const API_BASE = "https://callbridge.onrender.com"
+        const data = await res.json();
+        console.log("LOGIN SUCCESS:", data);
 
-/* small helpers */
-const $ = id => document.getElementById(id);
-const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
+        localStorage.setItem("authToken", data.token);
+        localStorage.setItem("currentUser", JSON.stringify(data.user));
 
-/* application state */
-let device = null;
-let activeConn = null;
-let incomingConn = null;
-let currentUser = null;
-let assignedNumber = "";
-let callStartTs = 0;
-let timerInterval = null;
-let wfRaf = null;
-let historyPollInterval = null;
-
-/* Save endpoint - single backend endpoint */
-const SAVE_ENDPOINTS = [ (API_BASE || "") + "/save-call" ];
-
-/* ---------- microphone permission (unchanged) ---------- */
-async function ensureMic() {
-  if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') {
-    console.warn("navigator.mediaDevices not available in this environment.");
-    alert("Microphone APIs are not available in this browser. Some features may not work.");
-    return false;
-  }
-
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const hasAudioInput = devices.some(d => d.kind === 'audioinput');
-
-    if (!hasAudioInput) {
-      console.warn("No audio input devices found (enumerateDevices).");
-      alert("No microphone detected. Please connect a microphone if you want to make/receive audio calls.");
-      return false;
-    }
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log("✅ Microphone permission granted");
-    try { stream.getTracks().forEach(t => t.stop()); } catch (e) { /* ignore */ }
-    return true;
-  } catch (err) {
-    console.error("getUserMedia error:", err);
-    if (err && (err.name === "NotFoundError" || err.name === "DevicesNotFoundError")) {
-      alert("No microphone device found. Connect a microphone and reload the page if you need audio.");
-      return false;
-    } else if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
-      alert("Microphone permission denied. Please allow microphone access and reload the page.");
-      return false;
-    } else {
-      console.warn("getUserMedia unknown error, continuing without mic:", err);
-      return false;
-    }
-  }
-}
-
-/* ---------- Auth token helpers ---------- */
-function getAuthToken() {
-  return localStorage.getItem("auth_token");
-}
-function setAuthToken(t) {
-  if (t) localStorage.setItem("auth_token", t);
-  else localStorage.removeItem("auth_token");
-}
-function authHeaders() {
-  const t = getAuthToken();
-  return t ? { "Authorization": "Bearer " + t } : {};
-}
-
-/* ---------- login UI/actions ---------- */
-function showLoginModal() { $("loginModal").style.display = "flex"; }
-function hideLoginModal() { $("loginModal").style.display = "none"; }
-async function performLogin() {
-  const email = document.getElementById("loginEmail").value.trim();
-  const password = document.getElementById("loginPassword").value.trim();
-
-  try {
-    const res = await fetch(`${API_BASE}/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    });
-
-    if (!res.ok) throw new Error(`Login failed: ${res.status}`);
-    const data = await res.json();
-
-    // ✅ Save token & user in localStorage
-    localStorage.setItem("authToken", data.token);
-    localStorage.setItem("currentUser", JSON.stringify(data.user));
-
-    currentUser = data.user;
-    postLoginInit(); // proceed to load profile and twilio
-  } catch (err) {
-    console.error("Login error:", err);
-    alert("Login failed. Please try again.");
-  }
-}
-
-async function performLogout() {
-  try {
-    // call backend logout if available (not required)
-    await fetch((API_BASE || "") + "/logout", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()) }).catch(()=>{});
-  } catch(_) {}
-  setAuthToken(null);
-  currentUser = null;
-  localStorage.removeItem("user");
-  // stop polling
-  if (historyPollInterval) { clearInterval(historyPollInterval); historyPollInterval = null; }
-  // show login
-  showLoginModal();
-}
-
-/* ---------- save call to backend (tries one endpoint) ---------- */
-async function remoteSaveCall(payload) {
-  for (const ep of SAVE_ENDPOINTS) {
-    try {
-      const res = await fetch(ep, {
-        method: "POST",
-        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        console.log("Saved call to", ep);
-        return true;
-      } else {
-        console.warn("Save endpoint returned", res.status, ep);
+        currentUser = data.user;
+        postLoginInit();
+      } catch (e) {
+        console.error("Login error:", e);
+        alert("Login failed: " + e.message);
       }
-    } catch (e) {
-      console.warn("Save endpoint failed", ep, e);
-    }
-  }
-  console.warn("All save endpoints failed");
-  return false;
-}
-
-/* ---------- load user profile from backend ---------- */
-async function loadProfile() {
-  try {
-    // Ensure we have a user from login
-    const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
-    if (!savedUser.email) {
-      console.warn("No user in localStorage");
-      return;
     }
 
-    const res = await fetch((API_BASE || "") + "/profile", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email: savedUser.email }),
-    });
-
-    if (!res.ok) {
-      console.warn("Profile fetch failed with", res.status);
-      return;
+    function appendDigit(d) {
+      const input = document.getElementById("phoneNumber");
+      input.value += d;
     }
 
-    const p = await res.json();
-    console.log("PROFILE RESPONSE:", p);
-
-    // Save and display profile
-    currentUser = p;
-    setText("pEmail", p.email || "—");
-    setText("pNumber", p.assigned_number || "—");
-    setText("pStatus", p.role || "Active");
-    setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
-    assignedNumber = p.assigned_number || "—";
-    setText("callerNumber", assignedNumber);
-  } catch (e) {
-    console.error("loadProfile error", e);
-  }
-}
-
-/* ---------- initialize Twilio Device by requesting token from backend ---------- */
-async function initTwilioDevice() {
-  try {
-    if (!currentUser || !currentUser.id) {
-      console.warn("No currentUser.id when initializing Twilio device. Skipping device init.");
-      return;
+    function showLoginModal() {
+      document.getElementById("loginBox").classList.remove("hidden");
+      document.getElementById("appBox").classList.add("hidden");
     }
 
-    const resp = await fetch((API_BASE || "") + "/twilio-token", {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-      body: JSON.stringify({ user_id: currentUser.id })
-    });
-
-    if (!resp.ok) {
-      const txt = await resp.text();
-      console.error("/twilio-token returned", resp.status, txt);
-      return;
+    function showApp() {
+      document.getElementById("loginBox").classList.add("hidden");
+      document.getElementById("appBox").classList.remove("hidden");
     }
 
-    const json = await resp.json();
-    if (!json || !json.token) {
-      console.error("twilio-token returned without token:", json);
-      return;
+    async function postLoginInit() {
+      if (!currentUser) return;
+      showApp();
+
+      document.getElementById("displayName").innerText = currentUser.display_name;
+      document.getElementById("pEmail").innerText = currentUser.email;
+      document.getElementById("pNumber").innerText = currentUser.assigned_number;
+      document.getElementById("pExpiry").innerText = currentUser.expiry_date;
+
+      await initTwilioDevice();
     }
 
-    assignedNumber = json.callerId || assignedNumber;
-    setText("callerNumber", assignedNumber || "—");
+    async function initTwilioDevice() {
+      try {
+        const res = await fetch(API_BASE + "/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identity: currentUser.email })
+        });
+        const data = await res.json();
 
-    // Defensive Twilio Device init
-    try {
-      if (typeof Twilio !== 'undefined' && Twilio.Device) {
-        if (typeof Twilio.Device.setup === 'function') {
-          Twilio.Device.setup(json.token);
-          device = Twilio.Device;
-          console.log("Twilio.Device.setup called");
-        } else if (typeof Twilio.Device === 'function') {
-          try {
-            device = new Twilio.Device(json.token, { debug: true });
-            console.log("Twilio.Device constructed with new Twilio.Device()");
-          } catch (e) {
-            if (typeof Twilio.Device.setup === 'function') {
-              Twilio.Device.setup(json.token);
-              device = Twilio.Device;
-              console.log("Fallback: Twilio.Device.setup called after constructor failed");
-            } else {
-              throw e;
-            }
-          }
-        } else {
-          if (typeof Twilio.Device.setup === 'function') {
-            Twilio.Device.setup(json.token);
-            device = Twilio.Device;
-            console.log("Twilio.Device.setup fallback");
+        if (!data.token) throw new Error("No token returned");
+
+        device = new Twilio.Device(data.token, {
+          codecPreferences: ["opus", "pcmu"],
+          fakeLocalDTMF: true,
+          enableRingingState: true
+        });
+
+        device.on("ready", () => {
+          document.getElementById("status").innerText = "Device ready";
+        });
+        device.on("error", (err) => {
+          console.error("Twilio Device error:", err);
+          document.getElementById("status").innerText = "Device error: " + err.message;
+        });
+        device.on("incoming", (conn) => {
+          if (confirm("Incoming call from " + conn.parameters.From)) {
+            conn.accept();
           } else {
-            throw new Error("Twilio client does not expose Device API as expected.");
+            conn.reject();
           }
+        });
+
+      } catch (err) {
+        console.error("initTwilioDevice error:", err);
+        document.getElementById("status").innerText = "Twilio init failed";
+      }
+    }
+
+    function makeCall() {
+      if (!device) {
+        alert("Device not ready");
+        return;
+      }
+      const num = document.getElementById("phoneNumber").value;
+      if (!num) return alert("Enter a number");
+      const conn = device.connect({ To: num });
+      document.getElementById("status").innerText = "Calling " + num;
+    }
+
+    function hangup() {
+      if (device) device.disconnectAll();
+      document.getElementById("status").innerText = "Call ended";
+    }
+
+    async function ensureMic() {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log("✅ Microphone permission granted");
+      } catch (err) {
+        alert("Microphone access denied");
+        throw err;
+      }
+    }
+
+    /* ---------- app init ---------- */
+    async function init() {
+      try {
+        await ensureMic();
+        const token = localStorage.getItem("authToken");
+        const savedUser = JSON.parse(localStorage.getItem("currentUser") || "{}");
+
+        if (token && savedUser && savedUser.email) {
+          console.log("Auto-login detected:", savedUser);
+          currentUser = savedUser;
+          await postLoginInit();
+          return;
         }
-      } else {
-        throw new Error("Twilio SDK not loaded or Twilio.Device not available.");
-      }
-    } catch (e) {
-      console.error("Twilio device init failed:", e);
-      alert("Failed to initialize Twilio device. See console for details.");
-      return;
-    }
 
-    // wire up events
-    try {
-      if (typeof device.on === 'function') {
-        device.on("ready", () => console.log("✅ Twilio Device ready"));
-        device.on("error", (err) => console.error("Twilio Device error:", err));
-        device.on("connect", onDeviceConnect);
-        device.on("disconnect", onDeviceDisconnect);
-        device.on("incoming", onDeviceIncoming);
-      } else if (typeof device.addEventListener === 'function') {
-        device.addEventListener("ready", () => console.log("✅ Twilio Device ready"));
-        device.addEventListener("error", (err) => console.error("Twilio Device error:", err));
-        device.addEventListener("connect", onDeviceConnect);
-        device.addEventListener("disconnect", onDeviceDisconnect);
-        device.addEventListener("incoming", onDeviceIncoming);
-      } else {
-        console.warn("Twilio device does not support 'on' or 'addEventListener' — events may not work.");
-      }
-    } catch (e) {
-      console.warn("Error wiring Twilio events:", e);
-    }
-
-  } catch (err) {
-    console.error("initTwilioDevice error:", err);
-  }
-}
-
-/* ---------- start outgoing call ---------- */
-async function startCall() {
-  const number = $("dialInput").value.trim();
-  if (!number) return alert("Enter a number to call.");
-  if (!device) return alert("Device not ready. Check console.");
-  try {
-    await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "outgoing", phone_number: number, status: "initiated", created_at: new Date().toISOString() });
-
-    if (typeof device.connect === 'function') {
-      device.connect({ To: number });
-    } else if (typeof Twilio !== 'undefined' && Twilio.Device && typeof Twilio.Device.connect === 'function') {
-      Twilio.Device.connect({ To: number });
-    } else {
-      console.warn("device.connect not available - cannot initiate outgoing call");
-      alert("Unable to place call: Twilio device connect API not available.");
-    }
-  } catch (e) {
-    console.error("startCall error", e);
-    alert("Failed to start call.");
-  }
-}
-
-/* ---------- when a connection is established ---------- */
-function onDeviceConnect(conn) {
-  try {
-    activeConn = conn;
-    $("dialpadArea").style.display = "none";
-    $("activeArea").style.display = "flex";
-    $("hangupBtn").style.display = "inline-block";
-    setText("activeLabel", conn.parameters?.To || conn.parameters?.From || "In Call");
-
-    // start timer + waveform
-    startTimer();
-    renderWaveform();
-
-    conn.on("disconnect", async () => {
-      const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
-      await remoteSaveCall({
-        user_email: currentUser && currentUser.email,
-        call_type: conn.parameters?.To ? "outgoing" : "incoming",
-        phone_number: conn.parameters?.To || conn.parameters?.From || "",
-        status: "completed",
-        created_at: new Date().toISOString(),
-        duration
-      });
-      stopCallUI();
-      refreshHistory();
-    });
-
-    conn.on("error", (err) => {
-      console.error("connection error", err);
-      stopCallUI();
-    });
-  } catch (e) {
-    console.warn("onDeviceConnect handler error:", e);
-  }
-}
-
-/* ---------- global disconnect ---------- */
-function onDeviceDisconnect() {
-  activeConn = null;
-  stopCallUI();
-}
-
-/* ---------- incoming call handler ---------- */
-function onDeviceIncoming(call) {
-  incomingConn = call;
-  $("incomingFrom").innerText = "From: " + (call.parameters?.From || "Unknown");
-  $("incomingModal").style.display = "flex";
-
-  try {
-    const ac = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ac.createOscillator();
-    const gain = ac.createGain();
-    osc.type = "sine"; osc.frequency.value = 700; gain.gain.value = 0.02;
-    osc.connect(gain); gain.connect(ac.destination);
-    osc.start();
-    incomingConn._ring = { ac, osc };
-  } catch (e) { /* ignore */ }
-}
-
-/* ---------- answer / decline incoming ---------- */
-async function answerIncoming() {
-  if (!incomingConn) return;
-  try { incomingConn._ring?.osc.stop(); incomingConn._ring?.ac.close?.(); } catch(e){}
-  $("incomingModal").style.display = "none";
-  try {
-    if (typeof incomingConn.accept === 'function') {
-      incomingConn.accept();
-    } else if (typeof incomingConn.acceptConnection === 'function') {
-      incomingConn.acceptConnection();
-    } else {
-      console.warn("No accept function on incoming connection");
-    }
-  } catch (e) { console.warn("Error accepting incoming:", e); }
-  await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "incoming", phone_number: incomingConn.parameters?.From || "", status: "answered", created_at: new Date().toISOString() });
-}
-async function declineIncoming() {
-  if (!incomingConn) return;
-  try { incomingConn._ring?.osc.stop(); incomingConn._ring?.ac.close?.(); } catch(e){}
-  try {
-    if (typeof incomingConn.reject === 'function') incomingConn.reject();
-    else if (typeof incomingConn.rejectConnection === 'function') incomingConn.rejectConnection();
-    else console.warn("No reject function on incoming connection");
-  } catch (e) { console.warn("Error rejecting incoming:", e); }
-  $("incomingModal").style.display = "none";
-  await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "incoming", phone_number: incomingConn.parameters?.From || "", status: "missed", created_at: new Date().toISOString(), duration: 0 });
-  incomingConn = null;
-}
-
-/* ---------- hangup ---------- */
-function hangUp() {
-  try {
-    if (device && typeof device.disconnectAll === 'function') device.disconnectAll();
-    else if (typeof Twilio !== 'undefined' && Twilio.Device && typeof Twilio.Device.disconnectAll === 'function') Twilio.Device.disconnectAll();
-  } catch (e) { console.warn("hangUp error:", e); }
-  stopCallUI();
-}
-
-/* ---------- stop call UI ---------- */
-function stopCallUI() {
-  $("dialpadArea").style.display = "flex";
-  $("activeArea").style.display = "none";
-  $("hangupBtn").style.display = "none";
-  clearWaveform();
-  stopTimer();
-}
-
-/* ---------- mute / hold ---------- */
-function toggleMute() {
-  if (!activeConn) return;
-  try {
-    if (typeof activeConn.mute === "function") {
-      const currentlyMuted = typeof activeConn.isMuted === 'function' ? activeConn.isMuted() : !!activeConn._muted;
-      activeConn.mute(!currentlyMuted);
-      $("muteBtn").innerText = (!currentlyMuted) ? "Unmute" : "Mute";
-    } else {
-      const s = activeConn.mediaStream || activeConn._mediaStream;
-      if (s && s.getAudioTracks) {
-        s.getAudioTracks().forEach(t => t.enabled = !t.enabled);
-        $("muteBtn").innerText = s.getAudioTracks()[0].enabled ? "Mute" : "Unmute";
-      }
-    }
-  } catch (e) { console.warn(e); }
-}
-function toggleHold() {
-  if (!activeConn) return;
-  try {
-    const s = activeConn.mediaStream || activeConn._mediaStream;
-    if (s && s.getAudioTracks) {
-      s.getAudioTracks().forEach(t => t.enabled = !t.enabled);
-      $("holdBtn").innerText = s.getAudioTracks()[0].enabled ? "Hold" : "Resume";
-    }
-  } catch (e) { console.warn(e); }
-}
-
-/* ---------- waveform ---------- */
-function renderWaveform() {
-  const wrap = $("waveWrap");
-  wrap.innerHTML = "";
-  for (let i = 0; i < 6; i++) {
-    const b = document.createElement("div");
-    b.style.width = '6px';
-    b.style.background = '#60a5fa';
-    b.style.borderRadius = '3px';
-    b.style.height = (8 + Math.random() * 30) + "px";
-    b.style.transition = 'height 120ms';
-    wrap.appendChild(b);
-  }
-  (function animate() {
-    const bars = wrap.children;
-    for (let i = 0; i < bars.length; i++) bars[i].style.height = (8 + Math.random() * 36) + "px";
-    wfRaf = requestAnimationFrame(animate);
-  })();
-  wrap.style.display = "flex";
-}
-function clearWaveform() {
-  if (wfRaf) cancelAnimationFrame(wfRaf);
-  $("waveWrap").innerHTML = "";
-  $("waveWrap").style.display = "none";
-}
-
-/* ---------- timer ---------- */
-function startTimer() {
-  callStartTs = Date.now();
-  stopTimer();
-  timerInterval = setInterval(() => {
-    const s = Math.floor((Date.now() - callStartTs) / 1000);
-    const mm = String(Math.floor(s / 60)).padStart(2, '0');
-    const ss = String(s % 60).padStart(2, '0');
-    setText("callTimer", mm + ":" + ss);
-  }, 500);
-}
-function stopTimer() {
-  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; setText("callTimer", "00:00"); }
-}
-
-/* ---------- refresh history (via backend) ---------- */
-async function refreshHistory() {
-  try {
-    if (!currentUser) return;
-    const res = await fetch((API_BASE || "") + "/calls", {
-      method: "GET",
-      headers: Object.assign({}, authHeaders())
-    });
-    if (!res.ok) {
-      console.warn("Failed to load calls", res.status);
-      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
-      return;
-    }
-    const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
-      return;
-    }
-    renderHistoryItems(data);
-  } catch (e) {
-    console.error("refreshHistory error", e);
-    $("historyList").innerHTML = '<div class="muted">Error loading history</div>';
-  }
-}
-function renderHistoryItems(items) {
-  const container = $("historyList");
-  container.innerHTML = "";
-  items.forEach(it => {
-    const div = document.createElement("div"); div.className = "history-item";
-    const left = document.createElement("div"); left.style.display = "flex"; left.style.flexDirection = "column";
-    const badge = document.createElement("div"); badge.className = "badge"; badge.innerText = (it.call_type || it.type || 'UNKNOWN').toUpperCase();
-    const main = document.createElement("div"); main.style.fontWeight = 700; main.innerText = (it.phone_number || it.other_number || it.to_number || it.from_number || '—');
-    const sub = document.createElement("div"); sub.className = "muted"; sub.style.fontSize = '12px'; sub.innerText = it.status || '';
-    left.appendChild(badge); left.appendChild(main); left.appendChild(sub);
-
-    const right = document.createElement("div"); right.style.textAlign = 'right';
-    right.innerHTML = `<div class="muted">${new Date(it.created_at || it.started_at || Date.now()).toLocaleString()}</div><div style="font-weight:700;margin-top:6px">${(it.duration || 0)} s</div>`;
-    div.appendChild(left); div.appendChild(right);
-    container.appendChild(div);
-  });
-}
-
-/* ---------- simple polling "realtime" fallback ---------- */
-function startHistoryPolling() {
-  if (historyPollInterval) clearInterval(historyPollInterval);
-  historyPollInterval = setInterval(refreshHistory, 8000);
-}
-function stopHistoryPolling() {
-  if (historyPollInterval) clearInterval(historyPollInterval);
-  historyPollInterval = null;
-}
-
-/* ---------- UI wiring ---------- */
-document.addEventListener("click", (e) => {
-  const k = e.target.closest("[data-key]");
-  if (k) $("dialInput").value += k.getAttribute("data-key");
-});
-$("startCallBtn").addEventListener("click", startCall);
-$("hangupBtn").addEventListener("click", hangUp);
-$("muteBtn").addEventListener("click", toggleMute);
-$("holdBtn").addEventListener("click", toggleHold);
-$("answerBtn").addEventListener("click", answerIncoming);
-$("declineBtn").addEventListener("click", declineIncoming);
-$("logoutBtn").addEventListener("click", async () => { await performLogout(); });
-
-/* Login modal listeners */
-$("loginBtn").addEventListener("click", performLogin);
-$("loginPassword").addEventListener("keydown", (e)=>{ if(e.key === "Enter") performLogin(); });
-
-/* ---------- after login initialization ---------- */
-async function postLoginInit() {
-  try {
-    await loadProfile();
-    await initTwilioDevice();
-    await refreshHistory();
-    startHistoryPolling();
-  } catch (e) {
-    console.error("postLoginInit error", e);
-  }
-}
-
-/* ---------- app init ---------- */
-async function init() {
-  try {
-    await ensureMic();
-
-    const token = getAuthToken();
-    if (!token) {
-      showLoginModal();
-      return;
-    }
-
-    // Try to fetch profile to validate token
-    try {
-      // read saved user from localStorage (set at login)
-      const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
-      if (!savedUser.email) {
-        console.warn("No user in localStorage, showing login");
+        console.warn("No saved user or token, showing login");
         showLoginModal();
-        return;
-      }
-
-      const res = await fetch((API_BASE || "") + "/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: savedUser.email }),
-      });
-
-      if (!res.ok) {
-        console.warn("Profile fetch failed, showing login", res.status);
-        setAuthToken(null);
+      } catch (err) {
+        console.error("App init error:", err);
         showLoginModal();
-        return;
       }
-
-      const profile = await res.json();
-      currentUser = profile;
-      await postLoginInit();
-    } catch (e) {
-      console.error("Profile validation error", e);
-      setAuthToken(null);
-      showLoginModal();
     }
-  } catch (err) {
-    console.error("App init error:", err);
-    showLoginModal();
-  }
-}
 
-init();
-  document.addEventListener("DOMContentLoaded", async () => {
-  const savedToken = localStorage.getItem("authToken");
-  const savedUser = localStorage.getItem("currentUser");
-
-  if (savedToken && savedUser) {
-    currentUser = JSON.parse(savedUser);
-    console.log("Auto-login with saved user:", currentUser);
-    postLoginInit();
-  } else {
-    showLoginModal(); // only show login form if no saved session
-  }
-});
-
-</script>
+    document.addEventListener("DOMContentLoaded", init);
+  </script>
 </body>
 </html>
