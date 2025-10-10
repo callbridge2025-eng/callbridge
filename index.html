@@ -250,40 +250,31 @@ function authHeaders() {
 function showLoginModal() { $("loginModal").style.display = "flex"; }
 function hideLoginModal() { $("loginModal").style.display = "none"; }
 async function performLogin() {
-  const email = $("loginEmail").value.trim();
-  const password = $("loginPassword").value;
-  $("loginError").style.display = "none";
-  if (!email || !password) { $("loginError").innerText = "Enter email and password."; $("loginError").style.display = "block"; return; }
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value.trim();
+
   try {
-    const res = await fetch((API_BASE || "") + "/login", {
+    const res = await fetch(`${API_BASE}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })
     });
-    if (!res.ok) {
-      const txt = await res.text();
-      $("loginError").innerText = txt || "Login failed";
-      $("loginError").style.display = "block";
-      return;
-    }
+
+    if (!res.ok) throw new Error(`Login failed: ${res.status}`);
     const data = await res.json();
-    if (!data || !data.token) {
-      $("loginError").innerText = "Invalid login response from server.";
-      $("loginError").style.display = "block";
-      return;
-    }
-    setAuthToken(data.token);
-    // store user for profile loading and Twilio identity
-    localStorage.setItem("user", JSON.stringify(data.user));
-    currentUser = data.user || null;
-    hideLoginModal();
-    await postLoginInit();
-  } catch (e) {
-    console.error("Login error:", e);
-    $("loginError").innerText = "Network error during login.";
-    $("loginError").style.display = "block";
+
+    // ✅ Save token & user in localStorage
+    localStorage.setItem("authToken", data.token);
+    localStorage.setItem("currentUser", JSON.stringify(data.user));
+
+    currentUser = data.user;
+    postLoginInit(); // proceed to load profile and twilio
+  } catch (err) {
+    console.error("Login error:", err);
+    alert("Login failed. Please try again.");
   }
 }
+
 async function performLogout() {
   try {
     // call backend logout if available (not required)
@@ -780,6 +771,19 @@ async function init() {
 }
 
 init();
+  document.addEventListener("DOMContentLoaded", async () => {
+  const savedToken = localStorage.getItem("authToken");
+  const savedUser = localStorage.getItem("currentUser");
+
+  if (savedToken && savedUser) {
+    currentUser = JSON.parse(savedUser);
+    console.log("Auto-login with saved user:", currentUser);
+    postLoginInit();
+  } else {
+    showLoginModal(); // only show login form if no saved session
+  }
+});
+
 </script>
 </body>
 </html>
