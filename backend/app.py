@@ -1,263 +1,297 @@
+# app.py
 from flask import Flask, request, jsonify, make_response
 from google.oauth2.service_account import Credentials
 import gspread
 import os
 from flask_cors import CORS
-import secrets
 from datetime import datetime
 import traceback
 
-# ---------------------------
-# Config / environment
-# ---------------------------
-GOOGLE_CREDS_PATH = os.environ.get("GOOGLE_CREDS_PATH", "credentials.json")
-GOOGLE_SHEET_URL = os.environ.get("GOOGLE_SHEET_URL", "")
-# Optional: restrict CORS to your frontend origin, e.g. "https://callbridge.vercel.app"
-CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
-
-# ---------------------------
-# Flask app + CORS
-# ---------------------------
 app = Flask(__name__)
-# allow simple CORS for now (you can set CORS_ALLOWED_ORIGINS to a specific origin)
-CORS(app, resources={r"/*": {"origins": CORS_ALLOWED_ORIGINS}}, supports_credentials=True)
 
-# Very small in-memory session store: token -> user dict
-# NOTE: This is ephemeral (lost when process restarts). Replace with DB or JWT for production.
-SESSIONS = {}
+# Allow CORS from your frontend (you can restrict origins if desired)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-# ---------------------------
-# Google Sheets setup
-# ---------------------------
+# ---- CONFIG ----
+# Path to the service account JSON file. Upload it to Render and name it 'credentials.json'
+GOOGLE_CREDENTIALS_FILE = os.environ.get("GOOGLE_CREDENTIALS_FILE", "credentials.json")
+
+# Use env var for sheet URL (set this in Render). Fallback placeholder if not set.
+SHEET_URL = os.environ.get("GOOGLE_SHEET_URL", "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID_HERE/edit")
+
+# ---- Initialize Google Sheets client ----
 try:
     creds = Credentials.from_service_account_file(
-        GOOGLE_CREDS_PATH,
+        GOOGLE_CREDENTIALS_FILE,
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
     gc = gspread.authorize(creds)
-    if not GOOGLE_SHEET_URL:
-        raise RuntimeError("GOOGLE_SHEET_URL environment variable not set.")
-    sh = gc.open_by_url(GOOGLE_SHEET_URL)
+    sh = gc.open_by_url(SHEET_URL)
     users_ws = sh.worksheet("Users")
     calls_ws = sh.worksheet("CallLogs")
 except Exception as e:
-    # keep app running but any route that touches sheets will return 500 with message
+    # Keep app running but log errors so Render logs show what's wrong
     users_ws = None
     calls_ws = None
-    sheet_setup_error = traceback.format_exc()
-    print("Google Sheets initialization error:", sheet_setup_error)
+    print("Google Sheets initialization error:", e)
+    traceback.print_exc()
 
 
-# ---------------------------
-# Helper functions
-# ---------------------------
+# ---- Helpers ----
 def get_all_users():
-    if users_ws is None:
-        raise RuntimeError("Users worksheet not initialized.")
-    return users_ws.get_all_records()
-
+    if not users_ws:
+        return []
+    try:
+        return users_ws.get_all_records()
+    except Exception as e:
+        print("Error reading Users worksheet:", e)
+        return []
 
 def find_user_by_email(email):
     users = get_all_users()
-    email = (email or "").strip()
     for u in users:
-        # Normalize keys (some spreadsheets may have keys with spaces)
-        u_email = u.get("Email") or u.get("email") or ""
-        if str(u_email).strip().lower() == email.lower():
-            # normalize returned user dict keys used by frontend
-            return {
-                "id": str(u_email).strip(),
-                "email": str(u_email).strip(),
-                "display_name": u.get("Display Name") or u.get("display_name") or "",
-                "assigned_number": str(u.get("Assigned Number") or u.get("assigned_number") or ""),
-                "expiry_date": str(u.get("Expiry Date") or u.get("expiry_date") or ""),
-                "role": u.get("Role") or u.get("role") or "user"
-            }
+        # gspread returns header keys exactly as spreadsheet headers.
+        # Accept either "Email" or lowercase "email" to be tolerant.
+        if (u.get("Email") or u.get("email") or "").strip().lower() == (email or "").strip().lower():
+            return u
     return None
 
+def token_for_email(email):
+    # Simple token encoding: "token:<email>"
+    # This is intentionally simple so frontend can use it immediately.
+    return f"token:{email}"
 
-def get_user_by_token(auth_header):
-    # expects "Bearer <token>"
-    if not auth_header:
-        return None
-    parts = auth_header.split()
-    if len(parts) != 2:
-        return None
-    token = parts[1]
-    return SESSIONS.get(token)
+def email_from_token(token):
+    if not token: return None
+    if token.startswith("token:"):
+        return token.split("token:", 1)[1]
+    return None
+
+def append_call_log(row_dict):
+    if not calls_ws:
+        return False, "CallLogs worksheet not configured"
+    try:
+        # Ensure order/headers — append as list matching existing headers
+        headers = calls_ws.row_values(1)
+        if not headers:
+            # If no headers present, create them from keys
+            headers = list(row_dict.keys())
+            calls_ws.insert_row(headers, 1)
+        row = [row_dict.get(h, "") for h in headers]
+        calls_ws.append_row(row)
+        return True, None
+    except Exception as e:
+        print("Error appending call log:", e)
+        traceback.print_exc()
+        return False, str(e)
 
 
-# ---------------------------
-# Routes
-# ---------------------------
-@app.route("/", methods=["GET", "OPTIONS"])
+# ---- Routes ----
+@app.route("/")
 def home():
     return jsonify({"message": "Backend is running!"})
 
 
 @app.route("/login", methods=["POST", "OPTIONS"])
 def login():
+    # Accept POST { email, password }
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+
     try:
-        data = request.get_json(force=True)
+        data = request.get_json(force=True, silent=True) or {}
         email = (data.get("email") or "").strip()
         password = data.get("password") or ""
 
-        if not email:
-            return jsonify({"error": "Email required"}), 400
-        if users_ws is None:
-            return jsonify({"error": "Server configuration error (sheets)"}), 500
+        if not email or not password:
+            return _corsify_resp(jsonify({"error": "email and password required"}), 400)
 
-        # find matching user row
-        # Note: spreadsheet column names must match "Email" and "Password"
-        rows = users_ws.get_all_records()
-        for r in rows:
-            row_email = (r.get("Email") or "").strip()
-            row_password = r.get("Password") or ""
-            if row_email.lower() == email.lower() and str(row_password) == str(password):
-                user = find_user_by_email(email)
-                token = secrets.token_urlsafe(24)
-                # store session
-                SESSIONS[token] = user
-                return jsonify({"token": token, "user": user})
+        user = find_user_by_email(email)
+        if not user:
+            return _corsify_resp(jsonify({"error": "Invalid credentials"}), 401)
 
-        return jsonify({"error": "Invalid credentials"}), 401
+        # Spreadsheet column might be 'Password' or 'password'
+        stored_pw = user.get("Password") or user.get("password") or ""
+        if str(stored_pw) != str(password):
+            return _corsify_resp(jsonify({"error": "Invalid credentials"}), 401)
+
+        # Build response expected by your frontend
+        user_response = {
+            "id": (user.get("Email") or user.get("email") or email),
+            "email": (user.get("Email") or user.get("email") or email),
+            "display_name": user.get("Display Name") or user.get("display_name") or "",
+            "assigned_number": str(user.get("Assigned Number") or user.get("assigned_number") or ""),
+            "expiry_date": user.get("Expiry Date") or user.get("expiry_date") or "",
+            "role": user.get("Role") or user.get("role") or "user"
+        }
+
+        token = token_for_email(user_response["email"])
+
+        return _corsify_resp(jsonify({"token": token, "user": user_response}), 200)
     except Exception as e:
-        print("Login error:", traceback.format_exc())
-        return jsonify({"error": "Server error during login"}), 500
+        print("Login error:", e)
+        traceback.print_exc()
+        return _corsify_resp(jsonify({"error": "Server error"}), 500)
 
 
 @app.route("/profile", methods=["GET", "POST", "OPTIONS"])
 def profile():
-    try:
-        # If GET + Authorization header -> return session user
-        if request.method == "GET":
-            auth = request.headers.get("Authorization", "")
-            user = get_user_by_token(auth)
-            if not user:
-                return jsonify({"error": "Unauthorized"}), 401
-            return jsonify(user)
+    # GET: read Authorization Bearer token and return user
+    # POST: accept { email } (some frontends call POST)
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
 
-        # If POST, accept {"email": "<email>"} in body
-        data = request.get_json(force=True)
-        email = (data.get("email") or "").strip()
+    try:
+        if request.method == "POST":
+            data = request.get_json(force=True, silent=True) or {}
+            email = (data.get("email") or "").strip()
+        else:
+            # GET: try Authorization header
+            auth = request.headers.get("Authorization") or ""
+            if auth.lower().startswith("bearer "):
+                token = auth.split(None, 1)[1]
+                email = email_from_token(token)
+            else:
+                email = None
+
         if not email:
-            return jsonify({"error": "email required"}), 400
+            return _corsify_resp(jsonify({"error": "Missing or invalid token / email"}), 400)
+
         user = find_user_by_email(email)
         if not user:
-            return jsonify({"error": "User not found"}), 404
-        return jsonify(user)
+            return _corsify_resp(jsonify({"error": "User not found"}), 404)
+
+        user_response = {
+            "email": user.get("Email") or user.get("email") or email,
+            "display_name": user.get("Display Name") or user.get("display_name") or "",
+            "assigned_number": str(user.get("Assigned Number") or user.get("assigned_number") or ""),
+            "expiry_date": user.get("Expiry Date") or user.get("expiry_date") or "",
+            "role": user.get("Role") or user.get("role") or "user"
+        }
+        return _corsify_resp(jsonify(user_response), 200)
     except Exception as e:
-        print("Profile error:", traceback.format_exc())
-        return jsonify({"error": "Server error"}), 500
+        print("Profile error:", e)
+        traceback.print_exc()
+        return _corsify_resp(jsonify({"error": "Server error"}), 500)
 
 
 @app.route("/calls", methods=["GET", "OPTIONS"])
-def list_calls():
+def get_calls():
+    # GET /calls returns call rows for the authenticated user (by Authorization Bearer token)
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
     try:
-        # require Authorization header
-        auth = request.headers.get("Authorization", "")
-        user = get_user_by_token(auth)
-        if not user:
-            return jsonify({"error": "Unauthorized"}), 401
-        email = user.get("email")
+        auth = request.headers.get("Authorization") or ""
+        email = None
+        if auth.lower().startswith("bearer "):
+            token = auth.split(None, 1)[1]
+            email = email_from_token(token)
+        else:
+            # allow query param fallback ?email=
+            email = request.args.get("email")
 
-        if calls_ws is None:
-            return jsonify({"error": "Server configuration error (sheets)"}), 500
+        if not email:
+            return _corsify_resp(jsonify({"error": "Missing token/email"}), 400)
+
+        if not calls_ws:
+            return _corsify_resp(jsonify([]), 200)
 
         rows = calls_ws.get_all_records()
-        # sheet columns: Timestamp From To Duration User Email Call Type Notes
-        user_calls = []
+        # Try to select rows related to this user. We don't know exact header names,
+        # so look for "User Email" or "From" match, or a column that contains the email.
+        result = []
         for r in rows:
-            if str(r.get("User Email") or "").strip().lower() != email.lower():
+            # Accept several column names
+            uemail = (r.get("User Email") or r.get("user_email") or r.get("Email") or r.get("email") or "").strip()
+            if uemail and uemail.lower() == email.lower():
+                result.append(r)
                 continue
-            # map sheet row to frontend-friendly object
-            user_calls.append({
-                "created_at": r.get("Timestamp") or r.get("timestamp") or "",
-                "phone_number": r.get("To") or r.get("to") or r.get("Phone") or "",
-                "other_number": r.get("From") or r.get("from") or "",
-                "duration": int(r.get("Duration") or 0),
-                "status": r.get("Notes") or "",
-                "call_type": r.get("Call Type") or r.get("call_type") or "",
-            })
-        # newest first (try to parse dates; if not, just reverse)
-        try:
-            user_calls.sort(key=lambda x: x.get("created_at") or "", reverse=True)
-        except Exception:
-            user_calls = list(reversed(user_calls))
-        return jsonify(user_calls)
+            # Also match if From/To contain assigned number for that user (best-effort)
+            # If nothing found, skip.
+        # If nothing found, return last 20 calls as fallback
+        if not result:
+            result = rows[-50:] if rows else []
+        return _corsify_resp(jsonify(result), 200)
     except Exception as e:
-        print("List calls error:", traceback.format_exc())
-        return jsonify({"error": "Server error"}), 500
+        print("get_calls error:", e)
+        traceback.print_exc()
+        return _corsify_resp(jsonify({"error": "Server error"}), 500)
 
 
 @app.route("/save-call", methods=["POST", "OPTIONS"])
 def save_call():
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
     try:
-        payload = request.get_json(force=True)
-        # determine user email (prefer Authorization token)
-        user = get_user_by_token(request.headers.get("Authorization", ""))
-        if user:
-            user_email = user.get("email")
-        else:
-            user_email = payload.get("user_id") or payload.get("user_email") or payload.get("email")
-        if not user_email:
-            return jsonify({"error": "user identification required"}), 400
-
-        if calls_ws is None:
-            return jsonify({"error": "Server configuration error (sheets)"}), 500
-
-        timestamp = payload.get("created_at") or payload.get("timestamp") or datetime.utcnow().isoformat(sep=" ")
-        from_num = payload.get("phone_number") if payload.get("call_type") == "incoming" else (payload.get("from_number") or "")
-        to_num = payload.get("phone_number") if payload.get("call_type") == "outgoing" else (payload.get("to_number") or "")
-        # ensure something in From/To (sheet expects both columns)
-        from_col = payload.get("from") or payload.get("From") or payload.get("caller") or from_num or ""
-        to_col = payload.get("to") or payload.get("To") or to_num or ""
-        duration = payload.get("duration") or 0
-        call_type = payload.get("call_type") or payload.get("type") or ""
-        notes = payload.get("status") or payload.get("notes") or ""
-
-        row = [timestamp, from_col, to_col, str(duration), user_email, call_type, notes]
-        calls_ws.append_row(row, value_input_option='USER_ENTERED')
-        return jsonify({"success": True}), 201
+        data = request.get_json(force=True, silent=True) or {}
+        # Accept fields like: user_id / user_email, call_type, phone_number, status, created_at, duration, notes
+        row = {
+            "Timestamp": data.get("created_at") or data.get("timestamp") or datetime.utcnow().isoformat(),
+            "From": data.get("from") or "",
+            "To": data.get("phone_number") or data.get("to") or "",
+            "Duration": data.get("duration") or "",
+            "User Email": data.get("user_email") or data.get("user_id") or data.get("user") or "",
+            "Call Type": data.get("call_type") or data.get("type") or "",
+            "Notes": data.get("notes") or data.get("status") or ""
+        }
+        ok, err = append_call_log(row)
+        if not ok:
+            return _corsify_resp(jsonify({"error": err or "Failed to save"}), 500)
+        return _corsify_resp(jsonify({"success": True}), 200)
     except Exception as e:
-        print("Save call error:", traceback.format_exc())
-        return jsonify({"error": "Server error"}), 500
+        print("save_call error:", e)
+        traceback.print_exc()
+        return _corsify_resp(jsonify({"error": "Server error"}), 500)
 
 
 @app.route("/twilio-token", methods=["POST", "OPTIONS"])
 def twilio_token():
+    # Return a short-lived Twilio token for Twilio JS SDK in production you'd generate JWT via Twilio.
+    # For now, return a dummy token and callerId so frontend can initialize (if needed).
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
     try:
-        data = request.get_json(force=True)
-        # find user (from token or user_id)
-        user = get_user_by_token(request.headers.get("Authorization", ""))
-        if not user:
-            email = (data.get("user_id") or data.get("email") or "").strip()
-            user = find_user_by_email(email) if email else None
-        if not user:
-            # return 401 so frontend knows it cannot get token
-            return jsonify({"error": "Unauthorized"}), 401
-
-        # STUB: in production you'd generate a Twilio capability token here
-        # Return a placeholder token string (frontend must handle absence gracefully)
-        fake_token = "TWILIO_FAKE_TOKEN_PLACEHOLDER"
-        return jsonify({"token": fake_token, "callerId": user.get("assigned_number")})
+        data = request.get_json(force=True, silent=True) or {}
+        user_id = data.get("user_id") or ""
+        # find user and return assigned number as callerId
+        user = find_user_by_email(user_id) or find_user_by_email((user_id.get("email") if isinstance(user_id, dict) else user_id) or "")
+        callerId = ""
+        if user:
+            callerId = str(user.get("Assigned Number") or user.get("assigned_number") or "")
+        # NOTE: Replace this with proper Twilio Access Token generation in production.
+        return _corsify_resp(jsonify({"token": "twilio-dummy-token", "callerId": callerId}), 200)
     except Exception as e:
-        print("Twilio token error:", traceback.format_exc())
-        return jsonify({"error": "Server error"}), 500
+        print("twilio-token error:", e)
+        traceback.print_exc()
+        return _corsify_resp(jsonify({"error": "Server error"}), 500)
 
 
-# ensure OPTIONS preflight returns OK for any route not handled above
-@app.after_request
-def add_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = CORS_ALLOWED_ORIGINS
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+@app.route("/logout", methods=["POST", "OPTIONS"])
+def logout():
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+    # frontend currently doesn't rely on server logout. Just return success.
+    return _corsify_resp(jsonify({"success": True}), 200)
+
+
+# ---- helpers for CORS-safe responses ----
+def _build_cors_preflight_response():
+    response = make_response()
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+    return response
+
+def _corsify_resp(response, status=200):
+    # Flask jsonify already returns a Response. We need to add CORS headers for safe cross-site calls.
+    response.status_code = status
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
     return response
 
 
-# ---------------------------
-# Run
-# ---------------------------
+# ---- Run ----
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
