@@ -226,6 +226,34 @@ def voice():
         dial.client("support")
     return str(resp)
 
+from twilio.twiml.voice_response import VoiceResponse, Dial
+
+@app.route("/voice", methods=["POST"])
+def voice():
+    """Twilio webhook: connects outgoing or incoming calls."""
+    try:
+        to_number = request.form.get("To")
+        from_number = request.form.get("From")
+
+        resp = VoiceResponse()
+
+        if to_number:
+            # Outgoing call from web to a phone number
+            dial = Dial(callerId=from_number or os.environ.get("TWILIO_CALLER_ID"))
+            dial.number(to_number)
+            resp.append(dial)
+        else:
+            # Incoming call (route to client app or default greeting)
+            dial = Dial()
+            dial.client("client")  # change "client" to your app name if needed
+            resp.append(dial)
+
+        return str(resp), 200, {"Content-Type": "application/xml"}
+    except Exception as e:
+        print("Error in /voice:", e)
+        return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+
+
 # ---------------- Run ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
