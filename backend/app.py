@@ -13,38 +13,47 @@ from twilio.twiml.voice_response import VoiceResponse
 
 # ---------------- Flask App ----------------
 app = Flask(__name__)
+# Allow all origins for now (tighten to your domain in production)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
+# Simple in-memory token map (replace with proper DB/JWT in production)
 TOKENS = {}
 
 # ---------------- Google Sheets Setup ----------------
 CREDS_FILE = os.environ.get("GOOGLE_CREDS_FILE", "credentials.json")
 SHEET_URL = os.environ.get("GOOGLE_SHEET_URL")
 if not SHEET_URL:
-    raise RuntimeError("Missing GOOGLE_SHEET_URL")
+    raise RuntimeError("Missing GOOGLE_SHEET_URL environment variable")
 
-creds = Credentials.from_service_account_file(
-    CREDS_FILE,
-    scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-)
-gc = gspread.authorize(creds)
-sh = gc.open_by_url(SHEET_URL)
-users_ws = sh.worksheet("Users")
-calls_ws = sh.worksheet("CallLogs")
+try:
+    creds = Credentials.from_service_account_file(
+        CREDS_FILE,
+        scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    )
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_url(SHEET_URL)
+    users_ws = sh.worksheet("Users")
+    calls_ws = sh.worksheet("CallLogs")
+except Exception as e:
+    print("Error initializing Google Sheets:", e)
+    raise
 
 # ---------------- Helpers ----------------
 def find_user_by_email(email):
-    rows = users_ws.get_all_records()
-    for r in rows:
-        if str(r.get("Email", "")).strip().lower() == str(email).strip().lower():
-            return {
-                "id": r.get("Email"),
-                "email": r.get("Email"),
-                "display_name": r.get("Display Name"),
-                "assigned_number": r.get("Assigned Number"),
-                "expiry_date": r.get("Expiry Date"),
-                "role": r.get("Role"),
-            }
+    try:
+        rows = users_ws.get_all_records()
+        for r in rows:
+            if str(r.get("Email", "")).strip().lower() == str(email).strip().lower():
+                return {
+                    "id": r.get("Email"),
+                    "email": r.get("Email"),
+                    "display_name": r.get("Display Name"),
+                    "assigned_number": r.get("Assigned Number"),
+                    "expiry_date": r.get("Expiry Date"),
+                    "role": r.get("Role"),
+                }
+    except Exception:
+        traceback.print_exc()
     return None
 
 def auth_from_token(header):
@@ -62,7 +71,6 @@ def _ok_cors():
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return resp
 
-# ---------------- Routes ----------------
 @app.after_request
 def after_request(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -70,32 +78,41 @@ def after_request(response):
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
 
+# ---------------- Routes ----------------
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"message": "Backend is running!"})
 
-# ---------- LOGIN ----------
 @app.route("/login", methods=["POST", "OPTIONS"])
 def login():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
         data = request.get_json(force=True)
-        email, password = data.get("email"), data.get("password")
+        email = data.get("email")
+        password = data.get("password")
+        if not email or not password:
+            return jsonify({"error": "email and password required"}), 400
 
         rows = users_ws.get_all_records()
         for r in rows:
-            if r.get("Email") == email and str(r.get("Password")) == str(password):
+            if str(r.get("Email", "")).strip().lower() == str(email).strip().lower() and str(r.get("Password","")) == str(password):
                 token = secrets.token_urlsafe(32)
-                TOKENS[token] = email
-                user = find_user_by_email(email)
+                TOKENS[token] = r.get("Email")
+                user = {
+                    "id": r.get("Email"),
+                    "email": r.get("Email"),
+                    "display_name": r.get("Display Name"),
+                    "assigned_number": r.get("Assigned Number"),
+                    "expiry_date": r.get("Expiry Date"),
+                    "role": r.get("Role"),
+                }
                 return jsonify({"token": token, "user": user})
         return jsonify({"error": "Invalid credentials"}), 401
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
-# ---------- PROFILE ----------
 @app.route("/profile", methods=["POST", "OPTIONS"])
 def profile():
     if request.method == "OPTIONS":
@@ -103,15 +120,16 @@ def profile():
     try:
         data = request.get_json(force=True)
         email = data.get("email")
+        if not email:
+            return jsonify({"error": "email required"}), 400
         user = find_user_by_email(email)
-        if user:
-            return jsonify(user)
-        return jsonify({"error": "User not found"}), 404
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        return jsonify(user)
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
-# ---------- CALL HISTORY ----------
 @app.route("/calls", methods=["GET", "OPTIONS"])
 def get_calls():
     if request.method == "OPTIONS":
@@ -121,81 +139,94 @@ def get_calls():
         calls = []
         for r in rows:
             calls.append({
-                "created_at": r.get("Timestamp") or r.get("timestamp"),
-                "from_number": r.get("From"),
-                "to_number": r.get("To"),
-                "duration": r.get("Duration"),
-                "user_email": r.get("User Email"),
-                "call_type": r.get("Call Type"),
-                "status": r.get("Notes")
+                "created_at": r.get("Timestamp") or r.get("timestamp") or None,
+                "from_number": r.get("From") or r.get("From Number") or r.get("from"),
+                "to_number": r.get("To") or r.get("To Number") or r.get("to"),
+                "duration": r.get("Duration") or r.get("duration") or 0,
+                "user_email": r.get("User Email") or r.get("User") or r.get("user_email"),
+                "call_type": r.get("Call Type") or r.get("call_type"),
+                "status": r.get("Notes") or r.get("Notes / Status") or r.get("status")
             })
-        return jsonify(list(reversed(calls)))
+        calls = list(reversed(calls))
+        return jsonify(calls)
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
-# ---------- SAVE CALL ----------
 @app.route("/save-call", methods=["POST", "OPTIONS"])
 def save_call():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        d = request.get_json(force=True)
-        ts = d.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S")
-        calls_ws.append_row([
-            ts, d.get("from"), d.get("to"),
-            d.get("duration"), d.get("user_email"),
-            d.get("call_type"), d.get("status")
-        ])
+        data = request.get_json(force=True)
+        timestamp = data.get("created_at") or data.get("timestamp") or time.strftime("%Y-%m-%d %H:%M:%S")
+        from_num = data.get("from") or data.get("from_number") or ""
+        to_num = data.get("to") or data.get("to_number") or ""
+        duration = int(data.get("duration", 0))
+        user_email = data.get("user_email") or data.get("user_id") or data.get("user") or ""
+        call_type = data.get("call_type") or ""
+        notes = data.get("status") or data.get("notes") or ""
+
+        # Append row: Timestamp, From, To, Duration, User Email, Call Type, Notes
+        calls_ws.append_row([timestamp, from_num, to_num, duration, user_email, call_type, notes])
         return jsonify({"success": True})
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
-# ---------- TWILIO TOKEN ----------
 @app.route("/twilio-token", methods=["POST", "OPTIONS"])
 def twilio_token():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        d = request.get_json(force=True)
-        user_id = d.get("user_id")
+        data = request.get_json(force=True)
+        user_id = data.get("user_id") or data.get("user") or None
+        if not user_id:
+            # if no user_id provided, try auth header
+            auth = request.headers.get("Authorization", "")
+            user_id = auth_from_token(auth)
+
         if not user_id:
             return jsonify({"error": "user_id required"}), 400
 
-        ACC = os.environ.get("TWILIO_ACCOUNT_SID")
-        KEY = os.environ.get("TWILIO_API_KEY_SID")
-        SECRET = os.environ.get("TWILIO_API_KEY_SECRET")
-        APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")
+        ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+        API_KEY_SID = os.environ.get("TWILIO_API_KEY_SID")
+        API_KEY_SECRET = os.environ.get("TWILIO_API_KEY_SECRET")
+        TWIML_APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")
 
-        token = AccessToken(ACC, KEY, SECRET, identity=user_id)
-        voice_grant = VoiceGrant(outgoing_application_sid=APP_SID, incoming_allow=True)
+        if not ACCOUNT_SID or not API_KEY_SID or not API_KEY_SECRET:
+            return jsonify({"error": "Twilio configuration missing"}), 500
+
+        token = AccessToken(ACCOUNT_SID, API_KEY_SID, API_KEY_SECRET, identity=str(user_id))
+        voice_grant = VoiceGrant(outgoing_application_sid=TWIML_APP_SID, incoming_allow=True)
         token.add_grant(voice_grant)
+        jwt = token.to_jwt()
+        if isinstance(jwt, bytes):
+            jwt = jwt.decode("utf-8")
 
         user = find_user_by_email(user_id)
         caller_id = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
 
-        return jsonify({
-            "token": token.to_jwt().decode("utf-8"),
-            "callerId": caller_id
-        })
+        return jsonify({"token": jwt, "callerId": caller_id})
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
-# ---------- TWILIO VOICE WEBHOOK ----------
 @app.route("/voice", methods=["POST"])
 def voice():
-    response = VoiceResponse()
+    # Twilio will POST here when making outbound call via TwiML app
+    resp = VoiceResponse()
     to_number = request.form.get("To")
     if to_number:
-        dial = response.dial(callerId=os.environ.get("TWILIO_PHONE_NUMBER"))
+        dial = resp.dial(callerId=os.environ.get("TWILIO_PHONE_NUMBER"))
         dial.number(to_number)
     else:
-        dial = response.dial()
+        # default to client if no To specified
+        dial = resp.dial()
         dial.client("support")
-    return str(response)
+    return str(resp)
 
 # ---------------- Run ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
