@@ -212,19 +212,6 @@ def twilio_token():
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
 
-@app.route("/voice", methods=["POST"])
-def voice():
-    # Twilio will POST here when making outbound call via TwiML app
-    resp = VoiceResponse()
-    to_number = request.form.get("To")
-    if to_number:
-        dial = resp.dial(callerId=os.environ.get("TWILIO_PHONE_NUMBER"))
-        dial.number(to_number)
-    else:
-        # default to client if no To specified
-        dial = resp.dial()
-        dial.client("support")
-    return str(resp)
 
 @app.route("/voice", methods=["POST"])
 def voice():
