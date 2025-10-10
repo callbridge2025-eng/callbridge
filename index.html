@@ -338,6 +338,7 @@ async function loadProfile() {
       return;
     }
     const p = await res.json();
+    console.log("PROFILE RESPONSE:", p);
     currentUser = currentUser || p || null;
 
     setText("pEmail", (p.display_name || p.email) || (currentUser && (currentUser.display_name || currentUser.email)) || "—");
