@@ -337,32 +337,33 @@ async function loadProfile() {
       console.warn("Profile fetch failed with", res.status);
       return;
     }
+
     const p = await res.json();
     console.log("PROFILE RESPONSE:", p);
-    currentUser = currentUser || p || null;
 
+    // Store user data properly
     currentUser = {
-  id: p.id || (currentUser && currentUser.id) || null,
-  email: p.email,
-  display_name: p.display_name,
-  assigned_number: p.assigned_number,
-  role: p.role,
-  expiry_date: p.expiry_date
-};
+      email: p.email,
+      display_name: p.display_name,
+      assigned_number: p.assigned_number,
+      role: p.role,
+      expiry_date: p.expiry_date
+    };
 
-setText("pEmail", p.email || "—");
-setText("pNumber", p.assigned_number || "—");
-setText("pStatus", p.role || "Active");
-setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
-assignedNumber = p.assigned_number || "—";
-setText("callerNumber", assignedNumber);
+    // Update UI
+    setText("pEmail", p.email || "—");
+    setText("pNumber", p.assigned_number || "—");
+    setText("pStatus", p.role || "Active");
+    setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
 
+    // Update the “Your Virtual Number” section
+    assignedNumber = p.assigned_number || "—";
+    setText("callerNumber", assignedNumber);
   } catch (e) {
     console.error("loadProfile error", e);
   }
 }
 
- 
 
 /* ---------- initialize Twilio Device by requesting token from backend ---------- */
 async function initTwilioDevice() {
