@@ -67,18 +67,20 @@ def login():
 
     return jsonify({"error": "Invalid credentials"}), 401
 
-@app.route("/profile", methods=["POST"])
+@app.route("/profile", methods=["GET"])
 def profile():
     """Return user profile info by email (from Google Sheets)."""
-    data = request.json
-    email = data.get("email")
+    email = request.args.get("email")  # get ?email=... from URL
+
+    if not email:
+        return jsonify({"error": "Missing email"}), 400
 
     users = users_ws.get_all_records()
 
     for user in users:
         if user.get("Email") == email:
             return jsonify({
-                "email": email,
+                "email": user.get("Email"),
                 "display_name": user.get("Display Name"),
                 "assigned_number": user.get("Assigned Number"),
                 "expiry_date": user.get("Expiry Date"),
