@@ -2,3 +2,4 @@ Flask==3.0.3
 gspread==6.1.2
 google-auth==2.35.0
 twilio==9.2.4
+flask-cors==5.0.0
