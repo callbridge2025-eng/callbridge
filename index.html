@@ -341,12 +341,22 @@ async function loadProfile() {
     console.log("PROFILE RESPONSE:", p);
     currentUser = currentUser || p || null;
 
-    setText("pEmail", (p.display_name || p.email) || (currentUser && (currentUser.display_name || currentUser.email)) || "—");
-    setText("pNumber", p.assigned_number || (currentUser && currentUser.assigned_number) || "—");
-    setText("pStatus", p.role || "Active");
-    setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
-    assignedNumber = p.assigned_number || assignedNumber || "—";
-    setText("callerNumber", assignedNumber || "—");
+    currentUser = {
+  id: p.id || (currentUser && currentUser.id) || null,
+  email: p.email,
+  display_name: p.display_name,
+  assigned_number: p.assigned_number,
+  role: p.role,
+  expiry_date: p.expiry_date
+};
+
+setText("pEmail", p.email || "—");
+setText("pNumber", p.assigned_number || "—");
+setText("pStatus", p.role || "Active");
+setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
+assignedNumber = p.assigned_number || "—";
+setText("callerNumber", assignedNumber);
+
   } catch (e) {
     console.error("loadProfile error", e);
   }
