@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Call Bridge — Tech Talk Titans</title>
 
-  <!-- Twilio Voice SDK v2 (blocking load — required so window.Twilio is available before script runs) -->
+  <!-- Twilio Voice SDK v2 (blocking load so window.Twilio is available) -->
   <script src="https://media.twiliocdn.com/sdk/js/voice/v2/twilio.min.js"></script>
 
   <style>
@@ -157,7 +157,7 @@
     </div>
   </div>
 
-  <!-- Login Modal (new) -->
+  <!-- Login Modal -->
   <div id="loginModal" style="display:none;align-items:center;justify-content:center">
     <div class="modalCard">
       <div style="font-weight:700;font-size:18px">Sign in</div>
@@ -172,161 +172,123 @@
     </div>
   </div>
 
-  <!-- Ringtone audio (lightweight) -->
+  <!-- Ringtone (tiny silent audio placeholder that browsers allow to preload) -->
   <audio id="ringtoneAudio" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" preload="auto"></audio>
 
 <script>
-/* ================== CONFIG - set this to your backend URL ================== */
+/* ================= CONFIG ================= */
 const API_BASE = "https://callbridge.onrender.com";
 
 /* small helpers */
 const $ = id => document.getElementById(id);
 const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
 
-/* application state */
-let device = null;              // Twilio.Device (v2)
-let activeConn = null;         // active connection
-let incomingConn = null;       // incoming (ringing) connection ref
+/* app state */
+let device = null;
+let activeConn = null;
+let incomingConn = null;
 let currentUser = null;
 let assignedNumber = "";
 let callStartTs = 0;
 let timerInterval = null;
 let wfRaf = null;
 let historyPollInterval = null;
-let localStream = null;        // saved getUserMedia stream to toggle mute/hold
+let localStream = null;
 
-/* Save endpoint - single backend endpoint */
-const SAVE_ENDPOINTS = [ (API_BASE || "") + "/save-call" ];
+/* auth helpers */
+function getAuthToken(){ return localStorage.getItem("auth_token"); }
+function setAuthToken(t){ if(t) localStorage.setItem("auth_token", t); else localStorage.removeItem("auth_token"); }
+function authHeaders(){ const t = getAuthToken(); return t ? { "Authorization": "Bearer " + t } : {}; }
 
-/* ---------- microphone permission ---------- */
+/* ---------- mic permission ---------- */
 async function ensureMic() {
   if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-    console.warn("navigator.mediaDevices.getUserMedia not available.");
-    alert("Microphone APIs are not available in this browser. Calls require a microphone.");
+    alert("Microphone APIs unavailable in this browser.");
     return false;
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // keep reference for mute/hold toggles
-    localStream = stream;
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    localStream = s;
     console.log("Microphone available");
     return true;
-  } catch (err) {
-    console.warn("ensureMic error:", err);
+  } catch (e) {
+    console.warn("Mic permission denied or failed", e);
     return false;
   }
 }
 
-/* ---------- auth token helpers ---------- */
-function getAuthToken() { return localStorage.getItem("auth_token"); }
-function setAuthToken(t) { if (t) localStorage.setItem("auth_token", t); else localStorage.removeItem("auth_token"); }
-function authHeaders() {
-  const t = getAuthToken();
-  return t ? { "Authorization": "Bearer " + t } : {};
-}
+/* ---------- login / logout ---------- */
+function showLoginModal(){ $("loginModal").style.display = "flex"; }
+function hideLoginModal(){ $("loginModal").style.display = "none"; }
 
-/* ---------- login UI/actions ---------- */
-function showLoginModal() { $("loginModal").style.display = "flex"; }
-function hideLoginModal() { $("loginModal").style.display = "none"; }
-
-async function performLogin() {
+async function performLogin(){
+  $("loginError").style.display = "none";
   const email = $("loginEmail").value.trim();
   const password = $("loginPassword").value;
-  $("loginError").style.display = "none";
-  if (!email || !password) { $("loginError").innerText = "Enter email and password."; $("loginError").style.display = "block"; return; }
-  try {
+  if(!email || !password){ $("loginError").innerText="Enter email & password"; $("loginError").style.display="block"; return; }
+  try{
     const res = await fetch(`${API_BASE}/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type":"application/json" },
       body: JSON.stringify({ email, password })
     });
-    if (!res.ok) {
-      const txt = await res.text();
-      $("loginError").innerText = txt || "Login failed";
-      $("loginError").style.display = "block";
-      return;
-    }
+    if(!res.ok){ const txt = await res.text(); $("loginError").innerText = txt || "Login failed"; $("loginError").style.display="block"; return; }
     const data = await res.json();
-    if (!data || !data.token) {
-      $("loginError").innerText = "Invalid login response from server.";
-      $("loginError").style.display = "block";
-      return;
-    }
-    // persist token and user for auto-login
+    if(!data || !data.token){ $("loginError").innerText="Invalid server response"; $("loginError").style.display="block"; return; }
+
     setAuthToken(data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
     currentUser = data.user;
     hideLoginModal();
 
-    // Request mic permission here (user gesture)
+    // request mic permission (user gesture)
     const micOk = await ensureMic();
-    if (!micOk) {
-      alert("Microphone permission is required for calls. Please allow microphone access.");
-    }
+    if (!micOk) alert("Please allow microphone access to use calls.");
 
+    // after login init
     await postLoginInit();
-  } catch (e) {
-    console.error("Login error:", e);
-    $("loginError").innerText = "Network error during login.";
-    $("loginError").style.display = "block";
+  } catch(e){
+    console.error("performLogin error", e);
+    $("loginError").innerText="Network error"; $("loginError").style.display="block";
   }
 }
 
-async function performLogout() {
-  try {
-    await fetch(`${API_BASE}/logout`, { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()) }).catch(()=>{});
-  } catch(_) {}
+async function performLogout(){
+  try { await fetch(`${API_BASE}/logout`, { method:"POST", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()) }).catch(()=>{}); } catch(_){}
   setAuthToken(null);
-  currentUser = null;
   localStorage.removeItem("user");
-  if (historyPollInterval) { clearInterval(historyPollInterval); historyPollInterval = null; }
-  try { if (device) device.destroy(); } catch(e){}
+  currentUser = null;
+  if(historyPollInterval) clearInterval(historyPollInterval);
+  try{ if(device) device.destroy(); }catch(e){}
   device = null;
   showLoginModal();
 }
 
-/* ---------- save call to backend (tries one endpoint) ---------- */
-async function remoteSaveCall(payload) {
-  for (const ep of SAVE_ENDPOINTS) {
-    try {
-      const res = await fetch(ep, {
-        method: "POST",
-        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        console.log("Saved call to", ep);
-        return true;
-      } else {
-        console.warn("Save endpoint returned", res.status, ep);
-      }
-    } catch (e) {
-      console.warn("Save endpoint failed", ep, e);
-    }
+/* ---------- call-save ---------- */
+async function remoteSaveCall(payload){
+  const ep = (API_BASE || "") + "/save-call";
+  try{
+    const res = await fetch(ep, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+      body: JSON.stringify(payload)
+    });
+    if(res.ok) console.log("Saved call to", ep);
+    else console.warn("Save failed", res.status);
+  }catch(e){
+    console.warn("Save call error", e);
   }
-  console.warn("All save endpoints failed");
-  return false;
 }
 
-/* ---------- load user profile from backend ---------- */
-async function loadProfile() {
-  try {
+/* ---------- profile ---------- */
+async function loadProfile(){
+  try{
     const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
-    if (!savedUser.email) {
-      console.warn("No user in localStorage");
-      return;
-    }
+    if(!savedUser.email) return;
     const res = await fetch(`${API_BASE}/profile`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: savedUser.email }),
+      method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email: savedUser.email })
     });
-    if (!res.ok) {
-      console.warn("Profile fetch failed with", res.status);
-      return;
-    }
+    if(!res.ok){ console.warn("Profile fetch failed", res.status); return; }
     const p = await res.json();
-    console.log("PROFILE RESPONSE:", p);
     currentUser = p;
     setText("pEmail", p.email || "—");
     setText("pNumber", p.assigned_number || "—");
@@ -334,204 +296,129 @@ async function loadProfile() {
     setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
     assignedNumber = p.assigned_number || "—";
     setText("callerNumber", assignedNumber);
-  } catch (e) {
-    console.error("loadProfile error", e);
-  }
+  }catch(e){ console.error("loadProfile error", e); }
 }
 
-/* ---------- initialize Twilio Device by requesting token from backend ---------- */
-async function initTwilioDevice() {
-  try {
-    if (!window.Twilio) {
-      console.error("Twilio SDK not available (window.Twilio is undefined).");
+/* ---------- safe Twilio init (waits for SDK if needed) ---------- */
+async function safeInitTwilioDevice(tokenJson){
+  // tokenJson is object { token: "...", callerId: "..." }
+  try{
+    // wait up to ~5s for Twilio to be defined
+    let tries = 0;
+    while ((typeof Twilio === "undefined" || !Twilio.Device) && tries < 10){
+      await new Promise(r => setTimeout(r, 500));
+      tries++;
+    }
+    if (typeof Twilio === "undefined" || !Twilio.Device){
+      console.error("Twilio SDK failed to load.");
       return;
     }
 
-    if (!currentUser || !currentUser.id) {
-      console.warn("No currentUser.id when initializing Twilio device. Skipping device init.");
+    if (!tokenJson || !tokenJson.token){
+      console.error("No token provided for Twilio device.");
       return;
     }
 
-    const resp = await fetch(`${API_BASE}/twilio-token`, {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-      body: JSON.stringify({ user_id: currentUser.id })
-    });
-
-    if (!resp.ok) {
-      const txt = await resp.text();
-      console.error("/twilio-token returned", resp.status, txt);
-      return;
-    }
-
-    const json = await resp.json();
-    if (!json || !json.token) {
-      console.error("twilio-token returned without token:", json);
-      return;
-    }
-
-    assignedNumber = json.callerId || assignedNumber;
+    assignedNumber = tokenJson.callerId || assignedNumber;
     setText("callerNumber", assignedNumber || "—");
 
-    // Destroy any existing device
-    try { if (device) { device.destroy(); device = null; } } catch(e){ console.warn("Error destroying previous device", e); }
+    try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
 
-   // --- Wait for Twilio SDK to load before creating device ---
-async function safeInitTwilioDevice(json) {
-  let retries = 0;
-  while ((typeof Twilio === "undefined" || !Twilio.Device) && retries < 10) {
-    console.warn("Waiting for Twilio SDK to load...");
-    await new Promise(r => setTimeout(r, 500));
-    retries++;
-  }
+    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug:false });
+    console.log("Twilio.Device (v2) created");
 
-  if (typeof Twilio === "undefined" || !Twilio.Device) {
-    console.error("❌ Twilio SDK failed to load after waiting.");
-    alert("Failed to load Twilio SDK. Please refresh the page.");
-    return;
-  }
+    device.on("ready", () => console.log("✅ Twilio Device ready"));
+    device.on("error", (err) => console.error("Twilio Device error:", err));
 
-  try {
-    // ✅ Create Twilio Device (v2)
-    device = new Twilio.Device(json.token, {
-      codecPreferences: ["opus", "pcmu"],
-      debug: false,
-    });
-
-    console.log("✅ Twilio.Device (v2) created");
-
-    device.on("ready", () => {
-      console.log("✅ Twilio Device ready");
-    });
-
-    device.on("error", (err) => {
-      console.error("Twilio Device error:", err);
-    });
-
-    // ✅ Incoming call handler
+    // incoming (do NOT auto-accept)
     device.on("incoming", (connection) => {
-      console.log("Incoming connection:", connection);
       incomingConn = connection;
-      $("incomingFrom").innerText =
-        "From: " + (connection.parameters?.From || "Unknown");
+      $("incomingFrom").innerText = "From: " + (connection.parameters?.From || "Unknown");
       $("incomingModal").style.display = "flex";
-
-      // Play ringtone safely
       try {
         const ringtone = $("ringtoneAudio");
-        ringtone.currentTime = 0;
-        ringtone.loop = true;
-        ringtone.play().catch(e => console.warn("Ringtone play blocked:", e));
-      } catch (e) {
-        console.warn("Ringtone play error:", e);
-      }
+        ringtone.currentTime = 0; ringtone.loop = true;
+        ringtone.play().catch(e => console.warn("Ringtone blocked", e));
+      } catch(e){ console.warn("Ringtone play error", e); }
     });
 
-    // ✅ Device disconnect handler
-    device.on("disconnect", (conn) => {
-      console.log("Device disconnect event:", conn);
+    device.on("disconnect", (c) => {
+      console.log("Device disconnect event", c);
     });
 
-  } catch (err) {
-    console.error("initTwilioDevice error:", err);
+  }catch(e){
+    console.error("safeInitTwilioDevice error", e);
   }
 }
 
+/* ---------- init device by requesting token from server ---------- */
+async function initTwilioDevice(){
+  try{
+    if(!currentUser || !currentUser.id){ console.warn("No user for twilio init"); return; }
+    const resp = await fetch(`${API_BASE}/twilio-token`, {
+      method: "POST", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()), body: JSON.stringify({ user_id: currentUser.id })
+    });
+    if(!resp.ok){ console.error("/twilio-token returned", resp.status); return; }
+    const json = await resp.json();
+    await safeInitTwilioDevice(json);
+  }catch(e){ console.error("initTwilioDevice error", e); }
+}
 
-/* ---------- start outgoing call ---------- */
-async function startCall() {
+/* ---------- outgoing call ---------- */
+async function startCall(){
   const number = $("dialInput").value.trim();
-  if (!number) return alert("Enter a number to call.");
+  if(!number) return alert("Enter a number to call.");
 
-  // Ensure mic permission & device initialization on user gesture
-  if (!localStream) {
+  if(!localStream){
     const ok = await ensureMic();
-    if (!ok) return alert("Microphone permission is required to place calls.");
+    if(!ok) return alert("Allow microphone to place calls.");
   }
-  if (!device) {
+  if(!device){
     await initTwilioDevice();
-    if (!device) return alert("Twilio Device initialization failed. See console.");
+    if(!device) return alert("Twilio device initialization failed.");
   }
 
-  try {
-    await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "outgoing", phone_number: number, status: "initiated", created_at: new Date().toISOString() });
+  try{
+    await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"outgoing", phone_number: number, status:"initiated", created_at: new Date().toISOString() });
 
-    // Connect with params (v2)
     const conn = device.connect({ params: { To: number } });
     activeConn = conn || null;
 
-    // UI changes
     $("dialpadArea").style.display = "none";
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
     setText("activeLabel", number || "In Call");
     startTimer();
     renderWaveform();
-
-    // Attempt to stop ringtone if any
-    try { $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
-
-    // Wire events on connection
-    if (activeConn && typeof activeConn.on === 'function') {
-      activeConn.on("accept", () => {
-        console.log("Call accepted");
-        callStartTs = Date.now();
+    try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
+    if(activeConn && typeof activeConn.on === 'function'){
+      activeConn.on("accept", ()=>{ callStartTs = Date.now(); });
+      activeConn.on("disconnect", async ()=>{
+        const duration = Math.max(0, Math.floor((Date.now() - callStartTs)/1000));
+        await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"outgoing", phone_number:number, status:"completed", created_at:new Date().toISOString(), duration });
+        stopCallUI(); refreshHistory();
       });
-
-      activeConn.on("disconnect", async () => {
-        const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
-        await remoteSaveCall({
-          user_email: currentUser && currentUser.email,
-          call_type: "outgoing",
-          phone_number: number,
-          status: "completed",
-          created_at: new Date().toISOString(),
-          duration
-        });
-        stopCallUI();
-        refreshHistory();
-      });
-
-      activeConn.on("error", (err) => {
-        console.error("connection error", err);
-        stopCallUI();
-      });
+      activeConn.on("error", (err)=>{ console.error("connection error", err); stopCallUI(); });
     }
-
-  } catch (e) {
-    console.error("startCall error", e);
-    alert("Failed to start call. See console for details.");
-  }
+  }catch(e){ console.error("startCall error", e); alert("Failed to start call."); }
 }
 
-/* ---------- answer / decline incoming ---------- */
-async function answerIncoming() {
-  if (!incomingConn) return;
-  try {
-    // stop ringtone
-    try { $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
-    // close modal
+/* ---------- answer/decline incoming ---------- */
+async function answerIncoming(){
+  if(!incomingConn) return;
+  try{
+    try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
     $("incomingModal").style.display = "none";
 
-    // ensure mic permission (user gesture)
-    if (!localStream) {
+    if(!localStream){
       const ok = await ensureMic();
-      if (!ok) { alert("Microphone permission required to answer."); return; }
+      if(!ok){ alert("Allow microphone to answer."); return; }
     }
 
-    // Accept the call
-    if (typeof incomingConn.accept === 'function') {
-      incomingConn.accept();
-    } else if (typeof incomingConn.acceptConnection === 'function') {
-      incomingConn.acceptConnection();
-    } else {
-      console.warn("No accept function on incoming connection");
-    }
+    if(typeof incomingConn.accept === 'function') incomingConn.accept();
+    else if(typeof incomingConn.acceptConnection === 'function') incomingConn.acceptConnection();
+    activeConn = incomingConn; incomingConn = null;
 
-    activeConn = incomingConn;
-    incomingConn = null;
-
-    // Update UI
     $("dialpadArea").style.display = "none";
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
@@ -539,56 +426,40 @@ async function answerIncoming() {
     startTimer();
     renderWaveform();
 
-    // Save answered incoming call
-    await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "incoming", phone_number: activeConn.parameters?.From || "", status: "answered", created_at: new Date().toISOString() });
+    await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"incoming", phone_number: activeConn.parameters?.From || "", status:"answered", created_at: new Date().toISOString() });
 
-    // wire disconnect handler
-    if (activeConn && typeof activeConn.on === 'function') {
-      activeConn.on("disconnect", async () => {
-        const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
-        await remoteSaveCall({
-          user_email: currentUser && currentUser.email,
-          call_type: "incoming",
-          phone_number: activeConn.parameters?.From || "",
-          status: "completed",
-          created_at: new Date().toISOString(),
-          duration
-        });
-        stopCallUI();
-        refreshHistory();
+    if(activeConn && typeof activeConn.on === 'function'){
+      activeConn.on("disconnect", async ()=>{
+        const duration = Math.max(0, Math.floor((Date.now() - callStartTs)/1000));
+        await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"incoming", phone_number: activeConn.parameters?.From || "", status:"completed", created_at: new Date().toISOString(), duration });
+        stopCallUI(); refreshHistory();
       });
     }
-
-  } catch (e) { console.warn("Error accepting incoming:", e); }
+  }catch(e){ console.warn("answerIncoming error", e); }
 }
 
-async function declineIncoming() {
-  if (!incomingConn) return;
-  try {
-    try { $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
-    if (typeof incomingConn.reject === 'function') incomingConn.reject();
-    else if (typeof incomingConn.rejectConnection === 'function') incomingConn.rejectConnection();
-    else console.warn("No reject function on incoming connection");
-  } catch (e) { console.warn("Error rejecting incoming:", e); }
+async function declineIncoming(){
+  if(!incomingConn) return;
+  try{ try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){} 
+    if(typeof incomingConn.reject === 'function') incomingConn.reject();
+    else if(typeof incomingConn.rejectConnection === 'function') incomingConn.rejectConnection();
+  }catch(e){ console.warn("declineIncoming error", e); }
   $("incomingModal").style.display = "none";
-  await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "incoming", phone_number: incomingConn.parameters?.From || "", status: "missed", created_at: new Date().toISOString(), duration: 0 });
+  await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"incoming", phone_number: incomingConn.parameters?.From || "", status:"missed", created_at: new Date().toISOString(), duration: 0 });
   incomingConn = null;
 }
 
 /* ---------- hangup ---------- */
-function hangUp() {
-  try {
-    if (activeConn && typeof activeConn.disconnect === 'function') {
-      activeConn.disconnect();
-    } else if (device && typeof device.disconnectAll === 'function') {
-      device.disconnectAll();
-    }
-  } catch (e) { console.warn("hangUp error:", e); }
+function hangUp(){
+  try{
+    if(activeConn && typeof activeConn.disconnect === 'function') activeConn.disconnect();
+    else if(device && typeof device.disconnectAll === 'function') device.disconnectAll();
+  }catch(e){ console.warn("hangUp error", e); }
   stopCallUI();
 }
 
-/* ---------- stop call UI ---------- */
-function stopCallUI() {
+/* ---------- stop UI ---------- */
+function stopCallUI(){
   $("dialpadArea").style.display = "flex";
   $("activeArea").style.display = "none";
   $("hangupBtn").style.display = "none";
@@ -597,194 +468,137 @@ function stopCallUI() {
   activeConn = null;
 }
 
-/* ---------- mute / hold (local) ---------- */
-function toggleMute() {
-  if (!activeConn && !localStream) return;
-  try {
-    if (activeConn && typeof activeConn.mute === "function") {
-      const isMuted = typeof activeConn.isMuted === 'function' ? activeConn.isMuted() : !!activeConn._muted;
-      activeConn.mute(!isMuted);
-      $("muteBtn").innerText = (!isMuted) ? "Unmute" : "Mute";
+/* ---------- mute / hold ---------- */
+function toggleMute(){
+  if(!activeConn && !localStream) return;
+  try{
+    if(activeConn && typeof activeConn.mute === "function"){
+      const muted = typeof activeConn.isMuted === 'function' ? activeConn.isMuted() : !!activeConn._muted;
+      activeConn.mute(!muted);
+      $("muteBtn").innerText = (!muted) ? "Unmute" : "Mute";
       return;
     }
     const s = localStream || (activeConn && (activeConn.mediaStream || activeConn._mediaStream));
-    if (s && s.getAudioTracks) {
-      const currentlyEnabled = s.getAudioTracks()[0].enabled;
-      s.getAudioTracks().forEach(t => t.enabled = !currentlyEnabled);
-      $("muteBtn").innerText = currentlyEnabled ? "Unmute" : "Mute";
+    if(s && s.getAudioTracks){
+      const curr = s.getAudioTracks()[0].enabled;
+      s.getAudioTracks().forEach(t=>t.enabled = !curr);
+      $("muteBtn").innerText = curr ? "Unmute" : "Mute";
     }
-  } catch (e) { console.warn(e); }
+  }catch(e){ console.warn(e); }
 }
 
-function toggleHold() {
-  if (!activeConn && !localStream) return;
-  try {
+function toggleHold(){
+  if(!activeConn && !localStream) return;
+  try{
     const s = localStream || (activeConn && (activeConn.mediaStream || activeConn._mediaStream));
-    if (s && s.getAudioTracks) {
-      const currentlyEnabled = s.getAudioTracks()[0].enabled;
-      s.getAudioTracks().forEach(t => t.enabled = !currentlyEnabled);
-      $("holdBtn").innerText = (!currentlyEnabled) ? "Resume" : "Hold";
+    if(s && s.getAudioTracks){
+      const curr = s.getAudioTracks()[0].enabled;
+      s.getAudioTracks().forEach(t=>t.enabled = !curr);
+      $("holdBtn").innerText = (!curr) ? "Resume" : "Hold";
     }
-  } catch (e) { console.warn(e); }
+  }catch(e){ console.warn(e); }
 }
 
 /* ---------- waveform ---------- */
-function renderWaveform() {
+function renderWaveform(){
   const wrap = $("waveWrap");
   wrap.innerHTML = "";
-  for (let i = 0; i < 6; i++) {
+  for(let i=0;i<6;i++){
     const b = document.createElement("div");
-    b.style.width = '6px';
-    b.style.background = '#60a5fa';
-    b.style.borderRadius = '3px';
-    b.style.height = (8 + Math.random() * 30) + "px";
-    b.style.transition = 'height 120ms';
+    b.style.width='6px';
+    b.style.background='#60a5fa';
+    b.style.borderRadius='3px';
+    b.style.height=(8+Math.random()*30)+"px";
+    b.style.transition='height 120ms';
     wrap.appendChild(b);
   }
-  (function animate() {
-    const bars = wrap.children;
-    for (let i = 0; i < bars.length; i++) bars[i].style.height = (8 + Math.random() * 36) + "px";
-    wfRaf = requestAnimationFrame(animate);
-  })();
-  wrap.style.display = "flex";
+  (function animate(){ const bars=wrap.children; for(let i=0;i<bars.length;i++) bars[i].style.height = (8+Math.random()*36)+"px"; wfRaf = requestAnimationFrame(animate); })();
+  wrap.style.display="flex";
 }
-function clearWaveform() {
-  if (wfRaf) cancelAnimationFrame(wfRaf);
-  $("waveWrap").innerHTML = "";
-  $("waveWrap").style.display = "none";
-}
+function clearWaveform(){ if(wfRaf) cancelAnimationFrame(wfRaf); $("waveWrap").innerHTML=""; $("waveWrap").style.display="none"; }
 
 /* ---------- timer ---------- */
-function startTimer() {
-  callStartTs = Date.now();
-  stopTimer();
-  timerInterval = setInterval(() => {
-    const s = Math.floor((Date.now() - callStartTs) / 1000);
-    const mm = String(Math.floor(s / 60)).padStart(2, '0');
-    const ss = String(s % 60).padStart(2, '0');
-    setText("callTimer", mm + ":" + ss);
-  }, 500);
-}
-function stopTimer() {
-  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; setText("callTimer", "00:00"); }
-}
+function startTimer(){ callStartTs = Date.now(); stopTimer(); timerInterval = setInterval(()=>{ const s = Math.floor((Date.now()-callStartTs)/1000); const mm = String(Math.floor(s/60)).padStart(2,'0'); const ss = String(s%60).padStart(2,'0'); setText("callTimer", mm+":"+ss); },500); }
+function stopTimer(){ if(timerInterval){ clearInterval(timerInterval); timerInterval=null; setText("callTimer","00:00"); } }
 
-/* ---------- refresh history (via backend) ---------- */
-async function refreshHistory() {
-  try {
-    if (!currentUser) return;
-    const res = await fetch((API_BASE || "") + "/calls", {
-      method: "GET",
-      headers: Object.assign({}, authHeaders())
-    });
-    if (!res.ok) {
-      console.warn("Failed to load calls", res.status);
-      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
-      return;
-    }
+/* ---------- history ---------- */
+async function refreshHistory(){
+  try{
+    if(!currentUser) return;
+    const res = await fetch((API_BASE || "") + "/calls", { method:"GET", headers: Object.assign({}, authHeaders()) });
+    if(!res.ok){ $("historyList").innerHTML = '<div class="muted">No calls yet</div>'; return; }
     const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
-      return;
-    }
+    if(!Array.isArray(data) || data.length===0){ $("historyList").innerHTML = '<div class="muted">No calls yet</div>'; return; }
     renderHistoryItems(data);
-  } catch (e) {
-    console.error("refreshHistory error", e);
-    $("historyList").innerHTML = '<div class="muted">Error loading history</div>';
-  }
+  }catch(e){ console.error("refreshHistory error", e); $("historyList").innerHTML = '<div class="muted">Error loading history</div>'; }
 }
-function renderHistoryItems(items) {
-  const container = $("historyList");
-  container.innerHTML = "";
-  items.forEach(it => {
-    const div = document.createElement("div"); div.className = "history-item";
-    const left = document.createElement("div"); left.style.display = "flex"; left.style.flexDirection = "column";
-    const badge = document.createElement("div"); badge.className = "badge"; badge.innerText = (it.call_type || it.type || 'UNKNOWN').toUpperCase();
-    const main = document.createElement("div"); main.style.fontWeight = 700; main.innerText = (it.phone_number || it.other_number || it.to_number || it.from_number || '—');
-    const sub = document.createElement("div"); sub.className = "muted"; sub.style.fontSize = '12px'; sub.innerText = it.status || '';
+function renderHistoryItems(items){
+  const container = $("historyList"); container.innerHTML = "";
+  items.forEach(it=>{
+    const div = document.createElement("div"); div.className="history-item";
+    const left = document.createElement("div"); left.style.display="flex"; left.style.flexDirection="column";
+    const badge = document.createElement("div"); badge.className="badge"; badge.innerText=(it.call_type||it.type||'UNKNOWN').toUpperCase();
+    const main = document.createElement("div"); main.style.fontWeight=700; main.innerText=(it.phone_number||it.other_number||it.to_number||it.from_number||'—');
+    const sub = document.createElement("div"); sub.className="muted"; sub.style.fontSize='12px'; sub.innerText = it.status || '';
     left.appendChild(badge); left.appendChild(main); left.appendChild(sub);
-
-    const right = document.createElement("div"); right.style.textAlign = 'right';
-    right.innerHTML = `<div class="muted">${new Date(it.created_at || it.started_at || Date.now()).toLocaleString()}</div><div style="font-weight:700;margin-top:6px">${(it.duration || 0)} s</div>`;
-    div.appendChild(left); div.appendChild(right);
-    container.appendChild(div);
+    const right = document.createElement("div"); right.style.textAlign='right';
+    right.innerHTML = `<div class="muted">${new Date(it.created_at||it.started_at||Date.now()).toLocaleString()}</div><div style="font-weight:700;margin-top:6px">${(it.duration||0)} s</div>`;
+    div.appendChild(left); div.appendChild(right); container.appendChild(div);
   });
 }
 
-/* ---------- simple polling "realtime" fallback ---------- */
-function startHistoryPolling() {
-  if (historyPollInterval) clearInterval(historyPollInterval);
-  historyPollInterval = setInterval(refreshHistory, 8000);
-}
-function stopHistoryPolling() {
-  if (historyPollInterval) clearInterval(historyPollInterval);
-  historyPollInterval = null;
-}
+/* ---------- polling ---------- */
+function startHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval = setInterval(refreshHistory,8000); }
+function stopHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval=null; }
 
 /* ---------- UI wiring ---------- */
-document.addEventListener("click", (e) => {
-  const k = e.target.closest("[data-key]");
-  if (k) $("dialInput").value += k.getAttribute("data-key");
-});
+document.addEventListener("click",(e)=>{ const k = e.target.closest("[data-key]"); if(k) $("dialInput").value += k.getAttribute("data-key"); });
 $("startCallBtn").addEventListener("click", startCall);
 $("hangupBtn").addEventListener("click", hangUp);
 $("muteBtn").addEventListener("click", toggleMute);
 $("holdBtn").addEventListener("click", toggleHold);
 $("answerBtn").addEventListener("click", answerIncoming);
 $("declineBtn").addEventListener("click", declineIncoming);
-$("logoutBtn").addEventListener("click", async () => { await performLogout(); });
+$("logoutBtn").addEventListener("click", async ()=>{ await performLogout(); });
 
 /* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
-$("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown", (e)=>{ if(e.key === "Enter") performLogin(); });
+$("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown",(e)=>{ if(e.key==='Enter') performLogin(); });
 
-/* ---------- after login initialization ---------- */
-async function postLoginInit() {
-  try {
+/* ---------- after login ---------- */
+async function postLoginInit(){
+  try{
     await loadProfile();
-    // Initialize Twilio Device now (mic permission should already have been requested during login)
-    await initTwilioDevice();
+    await initTwilioDevice(); // will call safeInitTwilioDevice internally
     await refreshHistory();
     startHistoryPolling();
-  } catch (e) {
-    console.error("postLoginInit error", e);
-  }
+  }catch(e){ console.error("postLoginInit error", e); }
 }
 
 /* ---------- app init (auto-login) ---------- */
-async function init() {
-  try {
-    // If auth token + user present in localStorage => auto-login
+async function init(){
+  try{
     const token = getAuthToken();
     const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
-
-    if (token && savedUser.email) {
+    if(token && savedUser.email){
       console.log("🔁 Auto-login from localStorage");
       currentUser = savedUser;
       await loadProfile();
       await refreshHistory();
 
-      // At auto-login: attempt to get mic permission now — if blocked by browser, wait for first user gesture
-      try {
+      // Try to obtain mic once (may be blocked); if blocked, init on first user gesture
+      try{
         const micOk = await ensureMic();
-        if (micOk) {
+        if(micOk){
           await initTwilioDevice();
         } else {
-          console.warn("Mic permission not granted during auto-login — Twilio device will be initialized on first user gesture.");
-          const gestureInit = async () => {
-            document.removeEventListener("click", gestureInit);
-            const ok = await ensureMic();
-            if (ok) await initTwilioDevice();
-          };
+          console.warn("Mic not granted at auto-login; will init Twilio on first gesture.");
+          const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
           document.addEventListener("click", gestureInit);
         }
-      } catch(e) {
+      }catch(e){
         console.warn("Auto-login mic check failed:", e);
-        const gestureInit = async () => {
-          document.removeEventListener("click", gestureInit);
-          const ok = await ensureMic();
-          if (ok) await initTwilioDevice();
-        };
+        const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
         document.addEventListener("click", gestureInit);
       }
 
@@ -794,8 +608,8 @@ async function init() {
 
     console.warn("No saved session, showing login modal");
     showLoginModal();
-  } catch (err) {
-    console.error("App init error:", err);
+  }catch(e){
+    console.error("init error", e);
     showLoginModal();
   }
 }
