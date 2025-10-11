@@ -305,11 +305,11 @@ async function safeInitTwilioDevice(tokenJson){
   try{
     // wait up to ~5s for Twilio to be defined
     let tries = 0;
-    while ((typeof Twilio === "undefined" || !Twilio.Voice.Device) && tries < 10){
+    while ((typeof Twilio === "undefined" || !TwilioVoice.Device) && tries < 10){
       await new Promise(r => setTimeout(r, 500));
       tries++;
     }
-    if (typeof Twilio === "undefined" || !Twilio.Voice.Device){
+    if (typeof Twilio === "undefined" || !TwilioVoice.Device){
       console.error("Twilio SDK failed to load.");
       return;
     }
@@ -324,8 +324,8 @@ async function safeInitTwilioDevice(tokenJson){
 
     try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
 
-    device = new Twilio.Voice.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug:false });
-    console.log("Twilio.Voice.Device (v2) created");
+    device = new TwilioVoice.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug:false });
+    console.log("TwilioVoice.Device (v2) created");
 
     device.on("registered", () => console.log("✅ Twilio Device registered"));
     device.on("error", (err) => console.error("Twilio Device error:", err));
