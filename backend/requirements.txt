@@ -4,5 +4,6 @@ gspread==6.1.2
 google-auth==2.33.0
 google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0
-twilio==9.2.3
+twilio==2.0.1
 gunicorn==23.0.0
+
