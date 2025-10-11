@@ -1,14 +1,1 @@
-{
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' https://sdk.twilio.com; connect-src 'self' https://callbridge.onrender.com https://*.twilio.com wss://*.twilio.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;"
-        }
-      ]
-    }
-  ],
-  "cleanUrls": true
-}
+
