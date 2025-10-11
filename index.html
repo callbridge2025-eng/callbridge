@@ -376,13 +376,30 @@ async function initTwilioDevice() {
     // Destroy any existing device
     try { if (device) { device.destroy(); device = null; } } catch(e){ console.warn("Error destroying previous device", e); }
 
-    // Create Twilio Device (v2)
+   // --- Wait for Twilio SDK to load before creating device ---
+async function safeInitTwilioDevice(json) {
+  let retries = 0;
+  while ((typeof Twilio === "undefined" || !Twilio.Device) && retries < 10) {
+    console.warn("Waiting for Twilio SDK to load...");
+    await new Promise(r => setTimeout(r, 500));
+    retries++;
+  }
+
+  if (typeof Twilio === "undefined" || !Twilio.Device) {
+    console.error("❌ Twilio SDK failed to load after waiting.");
+    alert("Failed to load Twilio SDK. Please refresh the page.");
+    return;
+  }
+
+  try {
+    // ✅ Create Twilio Device (v2)
     device = new Twilio.Device(json.token, {
       codecPreferences: ["opus", "pcmu"],
       debug: false,
     });
 
-    console.log("Twilio.Device (v2) created");
+    console.log("✅ Twilio.Device (v2) created");
+
     device.on("ready", () => {
       console.log("✅ Twilio Device ready");
     });
@@ -391,25 +408,26 @@ async function initTwilioDevice() {
       console.error("Twilio Device error:", err);
     });
 
-    // Incoming call handler (do NOT auto-accept)
+    // ✅ Incoming call handler
     device.on("incoming", (connection) => {
       console.log("Incoming connection:", connection);
       incomingConn = connection;
-      $("incomingFrom").innerText = "From: " + (connection.parameters?.From || "Unknown");
+      $("incomingFrom").innerText =
+        "From: " + (connection.parameters?.From || "Unknown");
       $("incomingModal").style.display = "flex";
 
-      // Try to play ringtone (may be blocked if no user gesture)
+      // Play ringtone safely
       try {
         const ringtone = $("ringtoneAudio");
         ringtone.currentTime = 0;
         ringtone.loop = true;
-        ringtone.play().catch(e=>console.warn("Ringtone play blocked:", e));
+        ringtone.play().catch(e => console.warn("Ringtone play blocked:", e));
       } catch (e) {
         console.warn("Ringtone play error:", e);
       }
     });
 
-    // hook device-level disconnect if needed
+    // ✅ Device disconnect handler
     device.on("disconnect", (conn) => {
       console.log("Device disconnect event:", conn);
     });
@@ -418,6 +436,7 @@ async function initTwilioDevice() {
     console.error("initTwilioDevice error:", err);
   }
 }
+
 
 /* ---------- start outgoing call ---------- */
 async function startCall() {
