@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Call Bridge — Tech Talk Titans</title>
 
-  <!-- Twilio Client SDK (keep as-is) -->
-  <script src="https://media.twiliocdn.com/sdk/js/client/v1.13/twilio.min.js"></script>
+  <!-- Twilio Voice SDK v2 -->
+  <script src="https://media.twiliocdn.com/sdk/js/voice/v2/twilio.min.js"></script>
 
   <style>
     :root{
@@ -181,15 +181,16 @@ const $ = id => document.getElementById(id);
 const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
 
 /* application state */
-let device = null;
-let activeConn = null;
-let incomingConn = null;
+let device = null;              // Twilio.Device instance (v2)
+let activeConn = null;         // active Twilio connection (incoming or outgoing)
+let incomingConn = null;       // connection object for incoming call (while ringing)
 let currentUser = null;
 let assignedNumber = "";
 let callStartTs = 0;
 let timerInterval = null;
 let wfRaf = null;
 let historyPollInterval = null;
+let localStream = null;        // optional local microphone stream for mute/hold toggles
 
 /* Save endpoint - single backend endpoint */
 const SAVE_ENDPOINTS = [ (API_BASE || "") + "/save-call" ];
@@ -202,16 +203,10 @@ async function ensureMic() {
     return false;
   }
   try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const hasAudioInput = devices.some(d => d.kind === 'audioinput');
-    if (!hasAudioInput) {
-      console.warn("No audio input devices found (enumerateDevices).");
-      // Not fatal; allow UI but voice may not work
-      return false;
-    }
-    // Prompt user for permission (best practice)
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    try { stream.getTracks().forEach(t => t.stop()); } catch(e){}
+    // keep a reference to localStream so we can toggle tracks for mute/hold
+    try { stream.getAudioTracks().forEach(t => t.enabled = true); } catch(e){}
+    localStream = stream;
     console.log("Microphone available");
     return true;
   } catch (err) {
@@ -220,7 +215,7 @@ async function ensureMic() {
   }
 }
 
-/* ---------- Auth token helpers ---------- */
+/* ---------- auth token helpers ---------- */
 function getAuthToken() { return localStorage.getItem("auth_token"); }
 function setAuthToken(t) { if (t) localStorage.setItem("auth_token", t); else localStorage.removeItem("auth_token"); }
 function authHeaders() {
@@ -260,6 +255,13 @@ async function performLogin() {
     localStorage.setItem("user", JSON.stringify(data.user));
     currentUser = data.user;
     hideLoginModal();
+
+    // IMPORTANT: request mic permission on this user gesture before Twilio setup
+    const granted = await ensureMic();
+    if (!granted) {
+      alert("Microphone permission is required for calls. Please allow microphone access and try again.");
+    }
+
     await postLoginInit();
   } catch (e) {
     console.error("Login error:", e);
@@ -276,6 +278,9 @@ async function performLogout() {
   currentUser = null;
   localStorage.removeItem("user");
   if (historyPollInterval) { clearInterval(historyPollInterval); historyPollInterval = null; }
+  // destroy device if present
+  try { if (device) device.destroy(); } catch(e){}
+  device = null;
   showLoginModal();
 }
 
@@ -362,75 +367,50 @@ async function initTwilioDevice() {
     assignedNumber = json.callerId || assignedNumber;
     setText("callerNumber", assignedNumber || "—");
 
-    // Defensive Twilio Device init
-    try {
-      if (typeof Twilio !== 'undefined' && Twilio.Device) {
-        // Preferred: Twilio.Device.setup(token)
-        if (typeof Twilio.Device.setup === 'function') {
-          Twilio.Device.setup(json.token);
-          device = Twilio.Device;
-          console.log("Twilio.Device.setup called");
-        } else if (typeof Twilio.Device === 'function') {
-          try {
-            device = new Twilio.Device(json.token, { debug: true });
-            console.log("Twilio.Device constructed with new Twilio.Device()");
-          } catch (e) {
-            if (typeof Twilio.Device.setup === 'function') {
-              Twilio.Device.setup(json.token);
-              device = Twilio.Device;
-              console.log("Fallback: Twilio.Device.setup called after constructor failed");
-            } else {
-              throw e;
-            }
-          }
-        } else {
-          if (typeof Twilio.Device.setup === 'function') {
-            Twilio.Device.setup(json.token);
-            device = Twilio.Device;
-            console.log("Twilio.Device.setup fallback");
-          } else {
-            throw new Error("Twilio client does not expose Device API as expected.");
-          }
-        }
-      } else {
-        throw new Error("Twilio SDK not loaded or Twilio.Device not available.");
-      }
-    } catch (e) {
-      console.error("Twilio device init failed:", e);
-      alert("Failed to initialize Twilio device. See console for details.");
-      return;
-    }
+    // Destroy any existing device (safe re-init)
+    try { if (device) { device.destroy(); device = null; } } catch(e){ console.warn("Error destroying previous device", e); }
 
-    // wire up events (support both on and addEventListener)
-    try {
-      const onReady = () => {
-        console.log("✅ Twilio Device ready");
-      };
-      const onError = (err) => {
-        console.error("Twilio Device error:", err);
-      };
-      const onConnect = (conn) => onDeviceConnect(conn);
-      const onDisconnect = () => onDeviceDisconnect();
-      const onIncoming = (conn) => onDeviceIncoming(conn);
+    // Create Twilio Device (v2)
+    device = new Twilio.Device(json.token, {
+      codecPreferences: ["opus", "pcmu"],
+      debug: false,
+    });
 
-      if (typeof device.on === 'function') {
-        device.on("ready", onReady);
-        device.on("error", onError);
-        device.on("connect", onConnect);
-        device.on("disconnect", onDisconnect);
-        device.on("incoming", onIncoming);
-      } else if (typeof device.addEventListener === 'function') {
-        device.addEventListener("ready", onReady);
-        device.addEventListener("error", onError);
-        device.addEventListener("connect", onConnect);
-        device.addEventListener("disconnect", onDisconnect);
-        device.addEventListener("incoming", onIncoming);
-      } else {
-        console.warn("Twilio device does not support 'on' or 'addEventListener' — events may not work.");
+    console.log("Twilio.Device setup called (v2)");
+    device.on("ready", () => {
+      console.log("✅ Twilio Device ready");
+    });
+
+    device.on("error", (err) => {
+      console.error("Twilio Device error:", err);
+    });
+
+    // Incoming call handler
+    device.on("incoming", (connection) => {
+      console.log("Incoming connection:", connection);
+      incomingConn = connection;
+      $("incomingFrom").innerText = "From: " + (connection.parameters?.From || "Unknown");
+      $("incomingModal").style.display = "flex";
+
+      // Attempt to play ringtone; may be blocked until user gesture.
+      try {
+        // If localStream exists, create a short beep via AudioContext (non-blocking)
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = "sine"; osc.frequency.value = 700; gain.gain.value = 0.02;
+        osc.connect(gain); gain.connect(ac.destination);
+        osc.start();
+        incomingConn._ring = { ac, osc };
+      } catch (e) {
+        console.warn("Ringtone play was blocked or failed:", e);
       }
-    } catch (e) {
-      console.warn("Error wiring Twilio events:", e);
-    }
+    });
+
+    device.on("disconnect", (conn) => {
+      // device-level disconnect (fallback)
+      console.log("Device disconnect event:", conn);
+    });
 
   } catch (err) {
     console.error("initTwilioDevice error:", err);
@@ -441,25 +421,73 @@ async function initTwilioDevice() {
 async function startCall() {
   const number = $("dialInput").value.trim();
   if (!number) return alert("Enter a number to call.");
-  if (!device) return alert("Device not ready. Check console.");
+  if (!device) {
+    // If device not initialized (possible during auto-login), ensure mic + init on first user gesture
+    const ok = await ensureMic();
+    if (!ok) return alert("Microphone permission required to start calls.");
+    await initTwilioDevice();
+    if (!device) return alert("Device initialization failed. Check console.");
+  }
+
   try {
+    // ensure we have mic access before connecting
+    if (!localStream) {
+      await ensureMic().catch(()=>{});
+    }
+
     await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "outgoing", phone_number: number, status: "initiated", created_at: new Date().toISOString() });
 
-    if (typeof device.connect === 'function') {
-      device.connect({ To: number });
-    } else if (typeof Twilio !== 'undefined' && Twilio.Device && typeof Twilio.Device.connect === 'function') {
-      Twilio.Device.connect({ To: number });
+    // v2 connect uses params inside an object
+    const conn = await device.connect({ params: { To: number } });
+    // device.connect may either return a Connection or be asynchronous; handle both cases defensively:
+    activeConn = conn || null;
+
+    // Switch UI to active call
+    $("dialpadArea").style.display = "none";
+    $("activeArea").style.display = "flex";
+    $("hangupBtn").style.display = "inline-block";
+    setText("activeLabel", number || "In Call");
+    startTimer();
+    renderWaveform();
+
+    // Wire connection events
+    if (activeConn) {
+      // On disconnect
+      activeConn.on("disconnect", async () => {
+        const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
+        await remoteSaveCall({
+          user_email: currentUser && currentUser.email,
+          call_type: "outgoing",
+          phone_number: number,
+          status: "completed",
+          created_at: new Date().toISOString(),
+          duration
+        });
+        stopCallUI();
+        refreshHistory();
+      });
+
+      activeConn.on("error", (err) => {
+        console.error("connection error", err);
+        stopCallUI();
+      });
+
+      activeConn.on("accept", () => {
+        console.log("Call accepted");
+        callStartTs = Date.now();
+      });
     } else {
-      console.warn("device.connect not available - cannot initiate outgoing call");
-      alert("Unable to place call: Twilio device connect API not available.");
+      // fallback if conn not returned synchronously: listen on device.connect event handled earlier
+      console.log("Outgoing call initiated (no conn object returned synchronously).");
     }
+
   } catch (e) {
     console.error("startCall error", e);
-    alert("Failed to start call.");
+    alert("Failed to start call. See console for details.");
   }
 }
 
-/* ---------- when a connection is established ---------- */
+/* ---------- when a connection is established (incoming or outgoing) ---------- */
 function onDeviceConnect(conn) {
   try {
     activeConn = conn;
@@ -472,29 +500,6 @@ function onDeviceConnect(conn) {
     // start timer + waveform
     startTimer();
     renderWaveform();
-
-    if (typeof conn.on === 'function') {
-      conn.on("disconnect", async () => {
-        const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
-        await remoteSaveCall({
-          user_email: currentUser && currentUser.email,
-          call_type: conn.parameters?.To ? "outgoing" : "incoming",
-          phone_number: conn.parameters?.To || conn.parameters?.From || "",
-          status: "completed",
-          created_at: new Date().toISOString(),
-          duration
-        });
-        stopCallUI();
-        refreshHistory();
-      });
-      conn.on("error", (err) => {
-        console.error("connection error", err);
-        stopCallUI();
-      });
-    } else {
-      // fallback: no conn.on available
-      console.log("Connected (no event handlers available on conn).");
-    }
   } catch (e) {
     console.warn("onDeviceConnect handler error:", e);
   }
@@ -506,29 +511,21 @@ function onDeviceDisconnect() {
   stopCallUI();
 }
 
-/* ---------- incoming call handler ---------- */
-function onDeviceIncoming(call) {
-  incomingConn = call;
-  $("incomingFrom").innerText = "From: " + (call.parameters?.From || "Unknown");
-  $("incomingModal").style.display = "flex";
-
-  try {
-    const ac = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ac.createOscillator();
-    const gain = ac.createGain();
-    osc.type = "sine"; osc.frequency.value = 700; gain.gain.value = 0.02;
-    osc.connect(gain); gain.connect(ac.destination);
-    osc.start();
-    incomingConn._ring = { ac, osc };
-  } catch (e) { /* ignore */ }
-}
-
-/* ---------- answer / decline incoming ---------- */
+/* ---------- incoming call handlers ---------- */
 async function answerIncoming() {
   if (!incomingConn) return;
-  try { incomingConn._ring?.osc.stop(); incomingConn._ring?.ac.close?.(); } catch(e){}
-  $("incomingModal").style.display = "none";
   try {
+    // stop ringing if started
+    try { incomingConn._ring?.osc.stop(); incomingConn._ring?.ac.close?.(); } catch(e){}
+
+    $("incomingModal").style.display = "none";
+
+    // Ensure mic permission before answering (user gesture)
+    if (!localStream) {
+      const ok = await ensureMic();
+      if (!ok) { alert("Microphone permission required to answer."); return; }
+    }
+
     if (typeof incomingConn.accept === 'function') {
       incomingConn.accept();
     } else if (typeof incomingConn.acceptConnection === 'function') {
@@ -536,13 +533,45 @@ async function answerIncoming() {
     } else {
       console.warn("No accept function on incoming connection");
     }
+
+    activeConn = incomingConn;
+    incomingConn = null;
+
+    // Update UI
+    $("dialpadArea").style.display = "none";
+    $("activeArea").style.display = "flex";
+    $("hangupBtn").style.display = "inline-block";
+    setText("activeLabel", activeConn.parameters?.From || "In Call");
+    startTimer();
+    renderWaveform();
+
+    // Save answered incoming call
+    await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "incoming", phone_number: activeConn.parameters?.From || "", status: "answered", created_at: new Date().toISOString() });
+
+    // hook disconnect event (if not already)
+    if (activeConn && typeof activeConn.on === 'function') {
+      activeConn.on("disconnect", async () => {
+        const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
+        await remoteSaveCall({
+          user_email: currentUser && currentUser.email,
+          call_type: "incoming",
+          phone_number: activeConn.parameters?.From || "",
+          status: "completed",
+          created_at: new Date().toISOString(),
+          duration
+        });
+        stopCallUI();
+        refreshHistory();
+      });
+    }
+
   } catch (e) { console.warn("Error accepting incoming:", e); }
-  await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type: "incoming", phone_number: incomingConn.parameters?.From || "", status: "answered", created_at: new Date().toISOString() });
 }
+
 async function declineIncoming() {
   if (!incomingConn) return;
-  try { incomingConn._ring?.osc.stop(); incomingConn._ring?.ac.close?.(); } catch(e){}
   try {
+    try { incomingConn._ring?.osc.stop(); incomingConn._ring?.ac.close?.(); } catch(e){}
     if (typeof incomingConn.reject === 'function') incomingConn.reject();
     else if (typeof incomingConn.rejectConnection === 'function') incomingConn.rejectConnection();
     else console.warn("No reject function on incoming connection");
@@ -555,8 +584,13 @@ async function declineIncoming() {
 /* ---------- hangup ---------- */
 function hangUp() {
   try {
-    if (device && typeof device.disconnectAll === 'function') device.disconnectAll();
-    else if (typeof Twilio !== 'undefined' && Twilio.Device && typeof Twilio.Device.disconnectAll === 'function') Twilio.Device.disconnectAll();
+    if (activeConn && typeof activeConn.disconnect === 'function') {
+      activeConn.disconnect();
+    } else if (device && typeof device.disconnectAll === 'function') {
+      device.disconnectAll();
+    } else if (typeof Twilio !== 'undefined' && Twilio.Device && typeof Twilio.Device.disconnectAll === 'function') {
+      Twilio.Device.disconnectAll();
+    }
   } catch (e) { console.warn("hangUp error:", e); }
   stopCallUI();
 }
@@ -568,32 +602,39 @@ function stopCallUI() {
   $("hangupBtn").style.display = "none";
   clearWaveform();
   stopTimer();
+  activeConn = null;
 }
 
-/* ---------- mute / hold ---------- */
+/* ---------- mute / hold (local mute) ---------- */
 function toggleMute() {
-  if (!activeConn) return;
+  if (!activeConn && !localStream) return;
   try {
-    if (typeof activeConn.mute === "function") {
+    // Prefer connection.mute if available
+    if (activeConn && typeof activeConn.mute === "function") {
       const currentlyMuted = typeof activeConn.isMuted === 'function' ? activeConn.isMuted() : !!activeConn._muted;
       activeConn.mute(!currentlyMuted);
       $("muteBtn").innerText = (!currentlyMuted) ? "Unmute" : "Mute";
-    } else {
-      const s = activeConn.mediaStream || activeConn._mediaStream;
-      if (s && s.getAudioTracks) {
-        s.getAudioTracks().forEach(t => t.enabled = !t.enabled);
-        $("muteBtn").innerText = s.getAudioTracks()[0].enabled ? "Mute" : "Unmute";
-      }
+      return;
+    }
+    // Else toggle local tracks
+    const s = localStream || (activeConn && (activeConn.mediaStream || activeConn._mediaStream));
+    if (s && s.getAudioTracks) {
+      const currentlyMuted = !s.getAudioTracks()[0].enabled;
+      s.getAudioTracks().forEach(t => t.enabled = currentlyMuted); // flip
+      $("muteBtn").innerText = currentlyMuted ? "Unmute" : "Mute";
     }
   } catch (e) { console.warn(e); }
 }
+
 function toggleHold() {
-  if (!activeConn) return;
+  if (!activeConn && !localStream) return;
   try {
-    const s = activeConn.mediaStream || activeConn._mediaStream;
+    const s = localStream || (activeConn && (activeConn.mediaStream || activeConn._mediaStream));
     if (s && s.getAudioTracks) {
-      s.getAudioTracks().forEach(t => t.enabled = !t.enabled);
-      $("holdBtn").innerText = s.getAudioTracks()[0].enabled ? "Hold" : "Resume";
+      // Hold as local mute for now
+      const currentlyEnabled = s.getAudioTracks()[0].enabled;
+      s.getAudioTracks().forEach(t => t.enabled = !currentlyEnabled);
+      $("holdBtn").innerText = (!currentlyEnabled) ? "Resume" : "Hold";
     }
   } catch (e) { console.warn(e); }
 }
@@ -706,12 +747,13 @@ $("logoutBtn").addEventListener("click", async () => { await performLogout(); })
 
 /* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
-$("loginPassword").addEventListener("keydown", (e)=>{ if(e.key === "Enter") performLogin(); });
+$("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown", (e)=>{ if(e.key === "Enter") performLogin(); });
 
 /* ---------- after login initialization ---------- */
 async function postLoginInit() {
   try {
     await loadProfile();
+    // initialize Twilio Device now that user has interacted (ensureMic called earlier during login)
     await initTwilioDevice();
     await refreshHistory();
     startHistoryPolling();
@@ -723,8 +765,6 @@ async function postLoginInit() {
 /* ---------- app init (auto-login) ---------- */
 async function init() {
   try {
-    await ensureMic();
-
     // If auth token + user present in localStorage => auto-login
     const token = getAuthToken();
     const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -732,7 +772,38 @@ async function init() {
     if (token && savedUser.email) {
       console.log("🔁 Auto-login from localStorage");
       currentUser = savedUser;
-      await postLoginInit();
+      // Load profile & history immediately (safe)
+      await loadProfile();
+      await refreshHistory();
+
+      // IMPORTANT: browser may block microphone autoplay. Defer Twilio device setup until user gesture.
+      // We'll initialize device immediately if we can get mic permission (i.e., if the browser allows it).
+      // Otherwise wait for first user gesture to initialize device (so AudioContext will be allowed).
+      try {
+        const micOk = await ensureMic();
+        if (micOk) {
+          await initTwilioDevice();
+        } else {
+          console.warn("Mic permission not granted during auto-login. Device setup will wait for user gesture.");
+          // setup one-time listener to initialize device on first user gesture
+          const gestureInit = async () => {
+            document.removeEventListener("click", gestureInit);
+            const ok = await ensureMic();
+            if (ok) await initTwilioDevice();
+          };
+          document.addEventListener("click", gestureInit);
+        }
+      } catch(e){
+        console.warn("Auto-login init: mic check failed", e);
+        const gestureInit = async () => {
+          document.removeEventListener("click", gestureInit);
+          const ok = await ensureMic();
+          if (ok) await initTwilioDevice();
+        };
+        document.addEventListener("click", gestureInit);
+      }
+
+      startHistoryPolling();
       return;
     }
 
