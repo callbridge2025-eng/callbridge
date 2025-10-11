@@ -300,7 +300,9 @@ async function loadProfile(){
 }
 
 /* ---------- safe Twilio init (waits for SDK if needed) ---------- */
-    // ensure SDK loads properly
+  async function safeInitTwilioDevice(tokenJson) {
+  try {
+    // ✅ Wait until Twilio SDK is loaded
     await new Promise((resolve, reject) => {
       if (window.Twilio && Twilio.Device) return resolve();
       const script = document.querySelector('script[src*="twilio.min.js"]');
@@ -310,27 +312,43 @@ async function loadProfile(){
       } else {
         reject(new Error("Twilio script not found"));
       }
+      // Fallback: after 5s, check again
       setTimeout(() => {
         if (window.Twilio && Twilio.Device) resolve();
         else reject(new Error("Twilio SDK load timeout"));
       }, 5000);
     });
 
-    if (!tokenJson || !tokenJson.token){
-      console.error("No token provided for Twilio device.");
+    if (!window.Twilio || !Twilio.Device) {
+      console.error("❌ Twilio SDK failed to load.");
       return;
     }
 
-    assignedNumber = tokenJson.callerId || assignedNumber;
-    setText("callerNumber", assignedNumber || "—");
+    console.log("🎧 Twilio SDK loaded, initializing device...");
 
-    try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
-
-    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug:false });
-    console.log("Twilio.Device (v2) created");
+    // ✅ Create Twilio Device
+    const device = new Twilio.Device(tokenJson.token, {
+      codecPreferences: ["opus", "pcmu"],
+      debug: false,
+    });
 
     device.on("ready", () => console.log("✅ Twilio Device ready"));
     device.on("error", (err) => console.error("Twilio Device error:", err));
+
+    // ✅ Handle incoming call
+    device.on("incoming", (connection) => {
+      console.log("📞 Incoming call:", connection);
+      window.incomingConn = connection;
+      document.getElementById("incomingFrom").innerText =
+        "From: " + (connection.parameters?.From || "Unknown");
+      document.getElementById("incomingModal").style.display = "flex";
+    });
+
+    window.device = device;
+  } catch (err) {
+    console.error("Twilio device initialization failed:", err);
+  }
+}
 
     // incoming (do NOT auto-accept)
     device.on("incoming", (connection) => {
