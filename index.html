@@ -300,19 +300,21 @@ async function loadProfile(){
 }
 
 /* ---------- safe Twilio init (waits for SDK if needed) ---------- */
-async function safeInitTwilioDevice(tokenJson){
-  // tokenJson is object { token: "...", callerId: "..." }
-  try{
-    // wait up to ~5s for Twilio to be defined
-    let tries = 0;
-    while ((typeof Twilio === "undefined" || !Twilio.Device) && tries < 10){
-      await new Promise(r => setTimeout(r, 500));
-      tries++;
-    }
-    if (typeof Twilio === "undefined" || !Twilio.Device){
-      console.error("Twilio SDK failed to load.");
-      return;
-    }
+    // ensure SDK loads properly
+    await new Promise((resolve, reject) => {
+      if (window.Twilio && Twilio.Device) return resolve();
+      const script = document.querySelector('script[src*="twilio.min.js"]');
+      if (script) {
+        script.addEventListener('load', resolve);
+        script.addEventListener('error', reject);
+      } else {
+        reject(new Error("Twilio script not found"));
+      }
+      setTimeout(() => {
+        if (window.Twilio && Twilio.Device) resolve();
+        else reject(new Error("Twilio SDK load timeout"));
+      }, 5000);
+    });
 
     if (!tokenJson || !tokenJson.token){
       console.error("No token provided for Twilio device.");
