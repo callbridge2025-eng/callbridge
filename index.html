@@ -6,7 +6,7 @@
   <title>Call Bridge — Tech Talk Titans</title>
 
   <!-- Twilio Voice SDK v2 (blocking load so window.Twilio is available) -->
-  <script src="https://sdk.twilio.com/js/voice/releases/2.0.1/twilio.min.js"></script>
+  <script src="https://sdk.twilio.com/js/voice/v2/twilio.min.js"></script>
 
   <style>
     :root{
@@ -305,26 +305,17 @@ async function safeInitTwilioDevice(tokenJson){
   try{
     // wait up to ~5s for Twilio to be defined
     let tries = 0;
-    while ((typeof Twilio === "undefined" || !Twilio.Device) && tries < 10){
-      await new Promise(r => setTimeout(r, 500));
-      tries++;
-    }
-    if (typeof Twilio === "undefined" || !Twilio.Device){
-      console.error("Twilio SDK failed to load.");
-      return;
-    }
+    while ((typeof TwilioVoice === "undefined" || !TwilioVoice.Device) && tries < 10) {
+  await new Promise(r => setTimeout(r, 500));
+  tries++;
+}
+if (typeof TwilioVoice === "undefined" || !TwilioVoice.Device) {
+  console.error("Twilio SDK failed to load.");
+  return;
+}
 
-    if (!tokenJson || !tokenJson.token){
-      console.error("No token provided for Twilio device.");
-      return;
-    }
+device = new TwilioVoice.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug:false });
 
-    assignedNumber = tokenJson.callerId || assignedNumber;
-    setText("callerNumber", assignedNumber || "—");
-
-    try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
-
-    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug:false });
     console.log("Twilio.Device (v2) created");
 
     device.on("ready", () => console.log("✅ Twilio Device ready"));
