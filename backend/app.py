@@ -293,36 +293,52 @@ def twilio_token():
         return jsonify({"error": "Internal server error"}), 500
 
 
-
 @app.route("/voice", methods=["POST"])
 def voice():
-    """Twilio webhook: connects outgoing or incoming calls."""
+    """Twilio webhook: connects outgoing (client->PSTN) or incoming calls."""
     try:
         to_number = request.form.get("To")
-        # 'From' will be something like 'client:user', not a real phone number
+        # Twilio Client identity, e.g. "client:user@example.com"
+        from_param = request.form.get("From", "") or ""
         default_caller_id = (
             os.environ.get("TWILIO_CALLER_ID") or
             os.environ.get("TWILIO_PHONE_NUMBER")
         )
 
+        # Derive the callerId for this call:
+        # 1) If the client passed an explicit CallerId param, prefer it (optional).
+        requested_caller = request.form.get("CallerId", "")
+
+        # 2) Otherwise, map the Twilio Client identity -> user -> assigned_number
+        identity = from_param.split(":", 1)[1] if from_param.startswith("client:") else from_param
+        user = find_user_by_email(identity) if identity else None
+        user_assigned = (user or {}).get("assigned_number") if user else None
+
+        # Final callerId choice with normalization
+        caller_id = to_e164(
+            requested_caller or user_assigned or default_caller_id,
+            default_region='US'
+        )
+
         resp = VoiceResponse()
 
         if to_number:
-            # Outgoing call from web client -> phone number
-            to_number = to_e164(to_number, default_region='US')  # ✅ properly indented
-            dial = Dial(callerId=to_e164(default_caller_id, default_region='US'))
+            # Outgoing call from web client -> PSTN
+            to_number = to_e164(to_number, default_region='US')
+            dial = Dial(callerId=caller_id)
             dial.number(to_number)
             resp.append(dial)
         else:
-            # Incoming call -> route to a client (browser app)
+            # Incoming PSTN -> route to a client identity; keep simple
             dial = Dial()
-            dial.client("client")  # or a specific user identity
+            dial.client("client")
             resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+
 
 
 
