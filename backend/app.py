@@ -10,6 +10,7 @@ from google.oauth2.service_account import Credentials
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
 from twilio.twiml.voice_response import VoiceResponse, Dial
+import phonenumbers  # pip install phonenumbers
 
 # ---------------- Flask App ----------------
 app = Flask(__name__)
@@ -90,6 +91,30 @@ def after_request(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
+
+# --- Phone normalization & Sheets RAW append ---
+
+def to_e164(num: str, default_region='US') -> str:
+    """Return E.164 (+14155551234). If empty/invalid, return original unchanged."""
+    if not num:
+        return num
+    n = str(num).strip()
+    try:
+        # If user typed 10 digits, treat as US and add +1
+        if n.isdigit() and len(n) == 10 and default_region == 'US':
+            n = f"+1{n}"
+        parsed = phonenumbers.parse(n, default_region)
+        if phonenumbers.is_valid_number(parsed):
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+    except Exception:
+        pass
+    return n  # leave as-is if we can't parse
+
+def append_row_raw(ws, row):
+    """Append exactly-as-given values (keeps + in Google Sheets)."""
+    srow = ["" if v is None else str(v) for v in row]
+    ws.append_row(srow, value_input_option='RAW')
+
 
 # ---------------- Routes ----------------
 @app.route("/", methods=["GET"])
@@ -209,10 +234,19 @@ def save_call():
         notes = data.get("status") or data.get("notes") or ""
 
         # always bind to the resolved email if present; otherwise use provided
-        user_email = auth_email or data.get("user_email") or data.get("user_id") or data.get("user") or ""
+        # always bind to the resolved email if present; otherwise use provided
+user_email = auth_email or data.get("user_email") or data.get("user_id") or data.get("user") or ""
 
-        calls_ws.append_row([timestamp, from_num, to_num, duration, user_email, call_type, notes])
-        return jsonify({"success": True})
+# normalize phone numbers to E.164 and save RAW (keeps '+')
+from_num_e164 = to_e164(from_num, default_region='US')
+to_num_e164   = to_e164(to_num,   default_region='US')
+
+append_row_raw(
+    calls_ws,
+    [timestamp, from_num_e164, to_num_e164, duration, user_email, call_type, notes]
+)
+return jsonify({"success": True})
+
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
@@ -250,7 +284,9 @@ def twilio_token():
             jwt = jwt.decode("utf-8")
 
         user = find_user_by_email(user_id)
-        caller_id = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
+        raw_caller = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
+caller_id = to_e164(raw_caller, default_region='US')
+
 
         return jsonify({"token": jwt, "callerId": caller_id})
     except Exception as e:
@@ -272,10 +308,12 @@ def voice():
         resp = VoiceResponse()
 
         if to_number:
-            # Outgoing call from web client -> phone number
-            dial = Dial(callerId=default_caller_id)
-            dial.number(to_number)
-            resp.append(dial)
+    # Outgoing call from web client -> phone number
+    to_number = to_e164(to_number, default_region='US')
+    dial = Dial(callerId=to_e164(default_caller_id, default_region='US'))
+    dial.number(to_number)
+    resp.append(dial)
+
         else:
             # Incoming call -> route to a client (browser app)
             dial = Dial()
