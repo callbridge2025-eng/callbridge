@@ -249,19 +249,16 @@ def twilio_token():
         if isinstance(jwt, bytes):
             jwt = jwt.decode("utf-8")
 
+                # Resolve caller ID from user's assigned number
         user = find_user_by_email(user_id)
-if not user:
-    return jsonify({"error": "user not found"}), 404
+        if not user:
+            return jsonify({"error": "user not found"}), 404
 
-caller_id = (user.get("assigned_number") or "").strip()
-if not caller_id:
-    return jsonify({"error": "assigned number missing for user"}), 400
+        caller_id = (user.get("assigned_number") or "").strip()
+        if not caller_id:
+            return jsonify({"error": "assigned number missing for user"}), 400
 
-return jsonify({"token": jwt, "callerId": caller_id})
-
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"token": jwt, "callerId": caller_id})
 
 
 @app.route("/voice", methods=["POST"])
