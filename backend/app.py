@@ -231,25 +231,30 @@ def voice():
     """Twilio webhook: connects outgoing or incoming calls."""
     try:
         to_number = request.form.get("To")
-        from_number = request.form.get("From")
+        # 'From' will be something like 'client:user', not a real phone number
+        default_caller_id = (
+            os.environ.get("TWILIO_CALLER_ID") or
+            os.environ.get("TWILIO_PHONE_NUMBER")
+        )
 
         resp = VoiceResponse()
 
         if to_number:
-            # Outgoing call from web to a phone number
-            dial = Dial(callerId=from_number or os.environ.get("TWILIO_CALLER_ID"))
+            # Outgoing call from web client -> phone number
+            dial = Dial(callerId=default_caller_id)
             dial.number(to_number)
             resp.append(dial)
         else:
-            # Incoming call (route to client app or default greeting)
+            # Incoming call -> route to a client (browser app)
             dial = Dial()
-            dial.client("client")  # change "client" to your app name if needed
+            dial.client("client")  # or a specific user identity
             resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+
 
 
 # ---------------- Run ----------------
