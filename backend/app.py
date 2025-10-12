@@ -308,12 +308,11 @@ def voice():
         resp = VoiceResponse()
 
         if to_number:
-    # Outgoing call from web client -> phone number
-    to_number = to_e164(to_number, default_region='US')
-    dial = Dial(callerId=to_e164(default_caller_id, default_region='US'))
-    dial.number(to_number)
-    resp.append(dial)
-
+            # Outgoing call from web client -> phone number
+            to_number = to_e164(to_number, default_region='US')  # ✅ properly indented
+            dial = Dial(callerId=to_e164(default_caller_id, default_region='US'))
+            dial.number(to_number)
+            resp.append(dial)
         else:
             # Incoming call -> route to a client (browser app)
             dial = Dial()
