@@ -573,7 +573,12 @@ function stopTimer(){ if(timerInterval){ clearInterval(timerInterval); timerInte
 async function refreshHistory(){
   try{
     if(!currentUser) return;
-    const res = await fetch((API_BASE || "") + "/calls", { method:"GET", headers: Object.assign({}, authHeaders()) });
+    const email = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+const res = await fetch(`${API_BASE}/calls${email}`, {
+  method: "GET",
+  headers: Object.assign({}, authHeaders())
+});
+
     if(!res.ok){ $("historyList").innerHTML = '<div class="muted">No calls yet</div>'; return; }
     const data = await res.json();
     if(!Array.isArray(data) || data.length===0){ $("historyList").innerHTML = '<div class="muted">No calls yet</div>'; return; }
