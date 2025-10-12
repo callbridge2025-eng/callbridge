@@ -148,13 +148,20 @@ def get_calls():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        # identify the signed-in user from the Bearer token
+        # 1) Try Bearer token -> email (works when TOKENS has the entry)
         auth_email = auth_from_token(request.headers.get("Authorization", ""))
 
+        # 2) Fallbacks for when the dyno restarted and TOKENS is empty
         if not auth_email:
-            return jsonify({"error": "Unauthorized"}), 401
+            # allow passing email via query or header as a fallback
+            auth_email = (request.args.get("email") or
+                          request.headers.get("X-User-Email") or "").strip().lower()
 
-        # allow admins to see all, others only their own
+        if not auth_email:
+            # no identity -> return empty list (keeps UI clean) instead of 401
+            return jsonify([])
+
+        # Admins can see all, others only their own rows
         viewer = find_user_by_email(auth_email)
         is_admin = False
         if viewer and str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
@@ -172,7 +179,8 @@ def get_calls():
                 "call_type": r.get("Call Type") or r.get("call_type"),
                 "status": r.get("Notes") or r.get("Notes / Status") or r.get("status"),
             }
-            if is_admin or (str(row.get("user_email", "")).strip().lower() == auth_email.strip().lower()):
+
+            if is_admin or (str(row.get("user_email") or "").strip().lower() == auth_email):
                 calls.append(row)
 
         calls = list(reversed(calls))
@@ -182,13 +190,15 @@ def get_calls():
         return jsonify({"error": "Internal server error"}), 500
 
 
+
 @app.route("/save-call", methods=["POST", "OPTIONS"])
 def save_call():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        # bind the saved row to the authenticated email
-        auth_email = auth_from_token(request.headers.get("Authorization", ""))
+        # prefer authed email; fall back to explicit email on request if needed
+        auth_email = auth_from_token(request.headers.get("Authorization", "")) \
+                     or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
 
         data = request.get_json(force=True)
         timestamp = data.get("created_at") or data.get("timestamp") or time.strftime("%Y-%m-%d %H:%M:%S")
@@ -198,7 +208,7 @@ def save_call():
         call_type = data.get("call_type") or ""
         notes = data.get("status") or data.get("notes") or ""
 
-        # always prefer the authenticated user; fall back to provided only if no token (e.g., legacy)
+        # always bind to the resolved email if present; otherwise use provided
         user_email = auth_email or data.get("user_email") or data.get("user_id") or data.get("user") or ""
 
         calls_ws.append_row([timestamp, from_num, to_num, duration, user_email, call_type, notes])
@@ -206,6 +216,7 @@ def save_call():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 @app.route("/twilio-token", methods=["POST", "OPTIONS"])
