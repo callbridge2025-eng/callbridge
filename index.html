@@ -253,12 +253,11 @@ async function performLogin(){
 }
 
 async function performLogout(){
-  try { await fetch(`${API_BASE}/logout`, { method:"POST", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()) }).catch(()=>{}); } catch(_){}
   setAuthToken(null);
   localStorage.removeItem("user");
   currentUser = null;
-  if(historyPollInterval) clearInterval(historyPollInterval);
-  try{ if(device) device.destroy(); }catch(e){}
+  if (historyPollInterval) clearInterval(historyPollInterval);
+  try { if (device) device.destroy(); } catch (e) {}
   device = null;
   showLoginModal();
 }
@@ -324,8 +323,10 @@ async function safeInitTwilioDevice(tokenJson){
 
     try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
 
-    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug:false });
-    console.log("Twilio.Device (v2) created");
+    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug: false });
+console.log("Twilio.Device (v2) created");
+device.register(); // <-- IMPORTANT
+
 
     device.on("ready", () => console.log("✅ Twilio Device ready"));
     device.on("error", (err) => console.error("Twilio Device error:", err));
@@ -379,7 +380,15 @@ async function startCall(){
   }
 
   try{
-    await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"outgoing", phone_number: number, status:"initiated", created_at: new Date().toISOString() });
+    await remoteSaveCall({
+  user_email: currentUser && currentUser.email,
+  call_type: "outgoing",
+  from_number: assignedNumber || "",
+  to_number: number,
+  status: "initiated",
+  created_at: new Date().toISOString()
+});
+
 
     const conn = device.connect({ params: { To: number } });
     activeConn = conn || null;
@@ -395,7 +404,16 @@ async function startCall(){
       activeConn.on("accept", ()=>{ callStartTs = Date.now(); });
       activeConn.on("disconnect", async ()=>{
         const duration = Math.max(0, Math.floor((Date.now() - callStartTs)/1000));
-        await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"outgoing", phone_number:number, status:"completed", created_at:new Date().toISOString(), duration });
+        await remoteSaveCall({
+  user_email: currentUser && currentUser.email,
+  call_type: "outgoing",
+  from_number: assignedNumber || "",
+  to_number: number,
+  status: "completed",
+  created_at: new Date().toISOString(),
+  duration
+});
+
         stopCallUI(); refreshHistory();
       });
       activeConn.on("error", (err)=>{ console.error("connection error", err); stopCallUI(); });
@@ -426,12 +444,29 @@ async function answerIncoming(){
     startTimer();
     renderWaveform();
 
-    await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"incoming", phone_number: activeConn.parameters?.From || "", status:"answered", created_at: new Date().toISOString() });
+    await remoteSaveCall({
+  user_email: currentUser && currentUser.email,
+  call_type: "incoming",
+  from_number: activeConn.parameters?.From || "",
+  to_number: assignedNumber || "",
+  status: "answered",
+  created_at: new Date().toISOString()
+});
+
 
     if(activeConn && typeof activeConn.on === 'function'){
       activeConn.on("disconnect", async ()=>{
         const duration = Math.max(0, Math.floor((Date.now() - callStartTs)/1000));
-        await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"incoming", phone_number: activeConn.parameters?.From || "", status:"completed", created_at: new Date().toISOString(), duration });
+        await remoteSaveCall({
+  user_email: currentUser && currentUser.email,
+  call_type: "incoming",
+  from_number: activeConn.parameters?.From || "",
+  to_number: assignedNumber || "",
+  status: "completed",
+  created_at: new Date().toISOString(),
+  duration
+});
+
         stopCallUI(); refreshHistory();
       });
     }
@@ -445,7 +480,16 @@ async function declineIncoming(){
     else if(typeof incomingConn.rejectConnection === 'function') incomingConn.rejectConnection();
   }catch(e){ console.warn("declineIncoming error", e); }
   $("incomingModal").style.display = "none";
-  await remoteSaveCall({ user_email: currentUser && currentUser.email, call_type:"incoming", phone_number: incomingConn.parameters?.From || "", status:"missed", created_at: new Date().toISOString(), duration: 0 });
+  await remoteSaveCall({
+  user_email: currentUser && currentUser.email,
+  call_type: "incoming",
+  from_number: incomingConn?.parameters?.From || "",
+  to_number: assignedNumber || "",
+  status: "missed",
+  created_at: new Date().toISOString(),
+  duration: 0
+});
+
   incomingConn = null;
 }
 
