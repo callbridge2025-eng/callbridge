@@ -675,20 +675,18 @@ async function init(){
       await refreshHistory();
 
       // Try to obtain mic once (may be blocked); if blocked, init on first user gesture
-      try{
-        const micOk = await ensureMic();
-        if(micOk){
-          await initTwilioDevice();
-        } else {
-          console.warn("Mic not granted at auto-login; will init Twilio on first gesture.");
-          const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
-          document.addEventListener("click", gestureInit);
-        }
-      }catch(e){
-        console.warn("Auto-login mic check failed:", e);
-        const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
-        document.addEventListener("click", gestureInit);
-      }
+      // 1) Register Twilio Device immediately (incoming doesn't need mic)
+await initTwilioDevice();
+
+// 2) Try to get mic separately — but don't block registration on it
+try {
+  const micOk = await ensureMic();
+  if (!micOk) {
+    console.warn("Mic not granted; user will be asked when they place/answer a call.");
+  }
+} catch (e) {
+  console.warn("Mic check failed:", e);
+}
 
       startHistoryPolling();
       return;
