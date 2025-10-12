@@ -185,6 +185,7 @@ const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
 
 /* app state */
 let device = null;
+let inCall = false;  // <-- NEW
 let activeConn = null;
 let incomingConn = null;
 let currentUser = null;
@@ -396,6 +397,7 @@ async function startCall(){
     $("dialpadArea").style.display = "none";
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
+    inCall = true;   // <-- NEW
     setText("activeLabel", number || "In Call");
     startTimer();
     renderWaveform();
@@ -440,6 +442,7 @@ async function answerIncoming(){
     $("dialpadArea").style.display = "none";
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
+    inCall = true;   // <-- NEW
     setText("activeLabel", activeConn.parameters?.From || "In Call");
     startTimer();
     renderWaveform();
@@ -510,6 +513,7 @@ function stopCallUI(){
   clearWaveform();
   stopTimer();
   activeConn = null;
+  inCall = false;  // <-- NEW
 }
 
 /* ---------- mute / hold ---------- */
@@ -658,6 +662,20 @@ async function init(){
   }
 }
 
+// Warn before reload/close while a call is active
+window.addEventListener("beforeunload", (e) => {
+  if (inCall) {
+    e.preventDefault();
+    e.returnValue = ""; // shows the native "Leave site?" dialog
+  }
+});
+
+// If the user still leaves, disconnect cleanly so the far end hangs up
+window.addEventListener("pagehide", () => {
+  try { if (device) device.disconnectAll(); } catch {}
+});
+
+  
 init();
 </script>
 </body>
