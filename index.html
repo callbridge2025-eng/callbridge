@@ -182,14 +182,6 @@ const API_BASE = "https://callbridge.onrender.com";
 /* small helpers */
 const $ = id => document.getElementById(id);
 const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
-  function decodeJwtIdentity(jwt){
-  try{
-    const b64 = jwt.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
-    const payload = JSON.parse(atob(b64));
-    return payload?.grants?.identity || payload?.identity || "(no identity)";
-  }catch(e){ return "(decode error)"; }
-}
-
   /* phone display formatter: ensures leading + when appropriate */
 /* phone display formatter:
    - US (+1XXXXXXXXXX) -> (XXX) XXX-XXXX
@@ -336,9 +328,10 @@ async function loadProfile(){
 }
 
 /* ---------- safe Twilio init (waits for SDK if needed) ---------- */
-evice = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug: false });
-    console.log("Twilio.Device (v2) created");
-    console.log("Token identity:", decodeJwtIdentity(tokenJson.token));
+async function safeInitTwilioDevice(tokenJson){
+  // tokenJson is object { token: "...", callerId: "..." }
+  try{
+    // wait up to ~5s for Twilio to be defined
     let tries = 0;
     while ((typeof Twilio === "undefined" || !Twilio.Device) && tries < 10){
       await new Promise(r => setTimeout(r, 500));
@@ -359,15 +352,18 @@ evice = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], 
 
     try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
 
-    device.register();
-    device.on("registered", () => console.log("✅ Device REGISTERED"));
-    device.on("unregistered", () => console.log("⚠️ Device UNREGISTERED"));
+    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug: false });
+console.log("Twilio.Device (v2) created");
+device.register(); // <-- IMPORTANT
+
+
+    device.on("ready", () => console.log("✅ Twilio Device ready"));
+    device.on("error", (err) => console.error("Twilio Device error:", err));
 
     // incoming (do NOT auto-accept)
     device.on("incoming", (connection) => {
       incomingConn = connection;
-      const fromPstn = connection.parameters?.From || connection.parameters?.Caller || "";
-$("incomingFrom").innerText = "From: " + showE164(fromPstn);
+      $("incomingFrom").innerText = "From: " + showE164(connection.parameters?.From || "");
       $("incomingModal").style.display = "flex";
       try {
         const ringtone = $("ringtoneAudio");
@@ -675,18 +671,20 @@ async function init(){
       await refreshHistory();
 
       // Try to obtain mic once (may be blocked); if blocked, init on first user gesture
-      // 1) Register Twilio Device immediately (incoming doesn't need mic)
-await initTwilioDevice();
-
-// 2) Try to get mic separately — but don't block registration on it
-try {
-  const micOk = await ensureMic();
-  if (!micOk) {
-    console.warn("Mic not granted; user will be asked when they place/answer a call.");
-  }
-} catch (e) {
-  console.warn("Mic check failed:", e);
-}
+      try{
+        const micOk = await ensureMic();
+        if(micOk){
+          await initTwilioDevice();
+        } else {
+          console.warn("Mic not granted at auto-login; will init Twilio on first gesture.");
+          const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
+          document.addEventListener("click", gestureInit);
+        }
+      }catch(e){
+        console.warn("Auto-login mic check failed:", e);
+        const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
+        document.addEventListener("click", gestureInit);
+      }
 
       startHistoryPolling();
       return;
