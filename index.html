@@ -182,6 +182,16 @@ const API_BASE = "https://callbridge.onrender.com";
 /* small helpers */
 const $ = id => document.getElementById(id);
 const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
+  /* phone display formatter: ensures leading + when appropriate */
+function showE164(n){
+  if (n == null) return '—';
+  const s = String(n).trim();
+  if (s === '') return '—';
+  if (s.startsWith('+')) return s;              // already E.164
+  if (/^\d{10}$/.test(s)) return `+1${s}`;      // plain US 10-digit -> +1…
+  if (/^\d{11,15}$/.test(s)) return `+${s}`;    // long digits -> prepend +
+  return s;                                     // otherwise, show as-is
+}
 
 /* app state */
 let device = null;
@@ -293,11 +303,11 @@ async function loadProfile(){
     const p = await res.json();
     currentUser = p;
     setText("pEmail", p.email || "—");
-    setText("pNumber", p.assigned_number || "—");
+    setText("pNumber", showE164(p.assigned_number));
     setText("pStatus", p.role || "Active");
     setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
-    assignedNumber = p.assigned_number || "—";
-    setText("callerNumber", assignedNumber);
+    assignedNumber = p.assigned_number || "";
+    setText("callerNumber", showE164(assignedNumber));
   }catch(e){ console.error("loadProfile error", e); }
 }
 
@@ -337,7 +347,7 @@ device.register(); // <-- IMPORTANT
     // incoming (do NOT auto-accept)
     device.on("incoming", (connection) => {
       incomingConn = connection;
-      $("incomingFrom").innerText = "From: " + (connection.parameters?.From || "Unknown");
+      $("incomingFrom").innerText = "From: " + showE164(connection.parameters?.From || "");
       $("incomingModal").style.display = "flex";
       try {
         const ringtone = $("ringtoneAudio");
@@ -400,7 +410,7 @@ async function startCall(){
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
     inCall = true;   // <-- NEW
-    setText("activeLabel", number || "In Call");
+    setText("activeLabel", showE164(number) || "In Call");
     startTimer();
     renderWaveform();
     try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
@@ -445,7 +455,7 @@ async function answerIncoming(){
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
     inCall = true;   // <-- NEW
-    setText("activeLabel", activeConn.parameters?.From || "In Call");
+    setText("activeLabel", showE164(activeConn.parameters?.From || "") || "In Call");
     startTimer();
     renderWaveform();
 
@@ -593,7 +603,10 @@ function renderHistoryItems(items){
     const div = document.createElement("div"); div.className="history-item";
     const left = document.createElement("div"); left.style.display="flex"; left.style.flexDirection="column";
     const badge = document.createElement("div"); badge.className="badge"; badge.innerText=(it.call_type||it.type||'UNKNOWN').toUpperCase();
-    const main = document.createElement("div"); main.style.fontWeight=700; main.innerText=(it.phone_number||it.other_number||it.to_number||it.from_number||'—');
+    const main = document.createElement("div"); 
+main.style.fontWeight = 700; 
+const rawNum = (it.phone_number || it.other_number || it.to_number || it.from_number || '');
+main.innerText = showE164(rawNum);
     const sub = document.createElement("div"); sub.className="muted"; sub.style.fontSize='12px'; sub.innerText = it.status || '';
     left.appendChild(badge); left.appendChild(main); left.appendChild(sub);
     const right = document.createElement("div"); right.style.textAlign='right';
