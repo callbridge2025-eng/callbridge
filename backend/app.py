@@ -250,9 +250,15 @@ def twilio_token():
             jwt = jwt.decode("utf-8")
 
         user = find_user_by_email(user_id)
-        caller_id = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
+if not user:
+    return jsonify({"error": "user not found"}), 404
 
-        return jsonify({"token": jwt, "callerId": caller_id})
+caller_id = (user.get("assigned_number") or "").strip()
+if not caller_id:
+    return jsonify({"error": "assigned number missing for user"}), 400
+
+return jsonify({"token": jwt, "callerId": caller_id})
+
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
@@ -262,30 +268,44 @@ def twilio_token():
 def voice():
     """Twilio webhook: connects outgoing or incoming calls."""
     try:
-        to_number = request.form.get("To")
-        # 'From' will be something like 'client:user', not a real phone number
-        default_caller_id = (
-            os.environ.get("TWILIO_CALLER_ID") or
-            os.environ.get("TWILIO_PHONE_NUMBER")
-        )
+        to_number = request.form.get("To")  # present for browser -> PSTN
+        from_param = request.form.get("From")  # e.g. 'client:user@example.com' for browser-originated calls
+
+        # Try to extract the email identity from 'client:<email>'
+        user_email = None
+        if from_param and from_param.startswith("client:"):
+            user_email = from_param.split(":", 1)[1].strip().lower()
+
+        # Look up the caller's assigned number if we have an email
+        caller_id = None
+        if user_email:
+            user = find_user_by_email(user_email)
+            if user:
+                caller_id = (user.get("assigned_number") or "").strip()
+
+        # Fallback only if absolutely necessary (e.g., inbound PSTN -> client, or missing config)
+        if not caller_id:
+            caller_id = os.environ.get("TWILIO_CALLER_ID") or os.environ.get("TWILIO_PHONE_NUMBER")
 
         resp = VoiceResponse()
 
         if to_number:
             # Outgoing call from web client -> phone number
-            dial = Dial(callerId=default_caller_id)
+            dial = Dial(callerId=caller_id)
             dial.number(to_number)
             resp.append(dial)
         else:
-            # Incoming call -> route to a client (browser app)
+            # Incoming PSTN call -> route to a client identity
+            # If you want per-user routing for inbound, customize this part.
             dial = Dial()
-            dial.client("client")  # or a specific user identity
+            dial.client("client")
             resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+
 
 
 
