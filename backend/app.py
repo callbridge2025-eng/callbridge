@@ -285,13 +285,13 @@ def twilio_token():
 
         user = find_user_by_email(user_id)
         raw_caller = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
-caller_id = to_e164(raw_caller, default_region='US')
-
+        caller_id = to_e164(raw_caller, default_region='US')
 
         return jsonify({"token": jwt, "callerId": caller_id})
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 @app.route("/voice", methods=["POST"])
