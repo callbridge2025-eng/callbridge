@@ -21,12 +21,12 @@
     .row { display:flex; gap:10px; align-items:center; }
     .col { display:flex; flex-direction:column; gap:10px; }
     input, button { width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:#fff; color:var(--ink); }
-    input::placeholder { color:var(--sub); }
+    input::placeholder { color:#9ca3af; }
     button { cursor:pointer; font-weight:600; }
     .btn-primary { background:var(--accent); border-color:var(--accent-2); color:#fff; }
     .btn-ghost { background:#fff; }
     .btn-danger { background:var(--danger); border-color:var(--danger-2); color:#fff; }
-    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:var(--chip); border:1px solid var(--border); font-size:12px; color:#374151; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:#eef2ff; border:1px solid var(--border); font-size:12px; color:#374151; }
     .muted { color:var(--muted); font-size:14px; }
     .divider { height:1px; background:var(--line); margin:8px 0; }
     .section-title { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
@@ -129,29 +129,32 @@
     </div>
   </div>
 
+  <!-- Robust loader: prefer LOCAL file first, then CDNs -->
   <script>
-    // ========= Robust loader for Twilio Voice SDK v2 (handles blocked CDN) =========
     function loadScript(src) {
       return new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = src; s.async = true; s.onload = () => resolve(src); s.onerror = () => reject(new Error('Failed ' + src));
+        s.src = src; s.async = true;
+        s.onload = () => resolve(src);
+        s.onerror = () => reject(new Error('Failed ' + src));
         document.head.appendChild(s);
       });
     }
-    async function loadTwilioSDK() {
+    async function ensureTwilioSDK() {
       const candidates = [
-        'https://unpkg.com/@twilio/voice-sdk@2/dist/twilio-voice.min.js',
-        'https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2/dist/twilio-voice.min.js'
+        './twilio-voice.min.js', // 1) LOCAL self-hosted file (put it next to index.html)
+        'https://unpkg.com/@twilio/voice-sdk@2/dist/twilio-voice.min.js', // 2) CDN
+        'https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2/dist/twilio-voice.min.js' // 3) CDN
       ];
       let lastErr;
       for (const url of candidates) {
         try { await loadScript(url); if (window.Twilio) return; } catch (e) { lastErr = e; }
       }
-      throw lastErr || new Error('Could not load Twilio SDK from CDNs');
+      throw lastErr || new Error('Could not load Twilio SDK from any source');
     }
   </script>
 
-  <!-- Main app script (waits for SDK to be loaded) -->
+  <!-- Main app -->
   <script>
     (async function main(){
       const $ = (id) => document.getElementById(id);
@@ -165,24 +168,19 @@
         p_email: $('p_email'), p_name: $('p_name'), p_number: $('p_number'), p_expiry: $('p_expiry'), p_role: $('p_role'),
         err: $('err'),
       };
-
       function showErr(msg){ ui.err.textContent = msg; ui.err.classList.remove('hidden'); }
       function clearErr(){ ui.err.classList.add('hidden'); ui.err.textContent = ''; }
       function log(){ const m=[...arguments].join(' '); console.log('[UI]', m); ui.log.textContent += m + '\n'; ui.log.scrollTop = ui.log.scrollHeight; }
       const showDialer = ()=>{ ui.dialerPane.classList.remove('hidden'); ui.activePane.classList.add('hidden'); };
       const showActive = ()=>{ ui.dialerPane.classList.add('hidden'); ui.activePane.classList.remove('hidden'); };
 
-      try {
-        await loadTwilioSDK();
-        if (!window.Twilio) throw new Error('Twilio SDK not available after load.');
-      } catch (e) {
-        showErr('Could not load Twilio SDK. If you are behind a firewall, allow unpkg.com or jsdelivr.net. Details: ' + e.message);
-        return;
-      }
+      // Load Twilio SDK (local first)
+      try { await ensureTwilioSDK(); }
+      catch(e){ showErr('Twilio SDK failed to load. Place twilio-voice.min.js next to index.html. Details: ' + e.message); return; }
 
-      // -------- BACKEND DISCOVERY / CONFIG --------
+      // Backend discovery
       const ALT_BASES = [
-        'https://callbridge-backend.onrender.com'  // <-- your Render backend URL
+        'https://callbridge-backend.onrender.com'
       ];
       let BASE = location.origin;
       async function pickBase() {
@@ -194,16 +192,15 @@
       }
       try { await pickBase(); log('Using backend:', BASE); } catch(e){ showErr(e.message); return; }
 
-      // -------- Twilio Device setup --------
       const { Device } = window.Twilio;
-      let authToken = null, me = null, device = null, call = null, callStart = 0, muted=false, held=false;
+      let authToken=null, me=null, device=null, call=null, callStart=0, muted=false, held=false;
 
       // LOGIN
       ui.loginBtn.addEventListener('click', async () => {
         clearErr();
         try{
           const body = { email: ui.email.value.trim(), password: ui.password.value };
-          if (!body.email || !body.password) throw new Error('Enter email and password.');
+          if(!body.email || !body.password) throw new Error('Enter email and password.');
           const r = await fetch(BASE + '/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
           const j = await r.json().catch(()=>({ error:'Non-JSON response' }));
           if(!r.ok) throw new Error(j.error || ('Login failed ('+r.status+')'));
@@ -283,8 +280,8 @@
 
       // CONTROLS
       ui.hangupBtn.addEventListener('click', ()=>{ if(call) call.disconnect(); });
-      ui.muteBtn.addEventListener('click', ()=>{ if(!call) return; muted = !muted; try{ call.mute(muted);}catch(e){} ui.muteBtn.textContent = muted? 'Unmute':'Mute'; });
-      ui.holdBtn.addEventListener('click', async ()=>{ if(!call) return; held = !held; try{ await call.hold(held);}catch(e){} ui.holdBtn.textContent = held? 'Unhold':'Hold'; });
+      ui.muteBtn.addEventListener('click', ()=>{ if(!call) return; try{ call.mute(!(window._muted = !window._muted)); }catch(e){} ui.muteBtn.textContent = window._muted? 'Unmute':'Mute'; });
+      ui.holdBtn.addEventListener('click', async ()=>{ if(!call) return; try{ await call.hold(!(window._held = !window._held)); }catch(e){} ui.holdBtn.textContent = window._held? 'Unhold':'Hold'; });
       ui.keypadBtn.addEventListener('click', ()=> ui.dtmfPad.classList.toggle('hidden'));
       document.querySelectorAll('[data-dtmf]').forEach(el=> el.addEventListener('click', ()=>{ if(call) try{ call.sendDigits(el.getAttribute('data-dtmf')); }catch(e){} }));
 
@@ -306,7 +303,7 @@
 
       async function saveCallLog({duration=0,to='',status='Completed'}){
         try{
-          const payload = { created_at: new Date().toISOString().replace('T',' ').slice(0,16), from: me.assigned_number||'', to, duration, user_email: me.email, call_type:'outgoing', status };
+          const payload = { created_at: new Date().toISOString().replace('T',' ').slice(0,16), from: (me && me.assigned_number) || '', to, duration, user_email: (me && me.email) || '', call_type:'outgoing', status };
           await fetch(BASE + '/save-call', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         }catch(e){ log('Save log error:', e.message); }
       }
