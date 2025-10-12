@@ -239,6 +239,7 @@ def twilio_token():
         API_KEY_SECRET = os.environ.get("TWILIO_API_KEY_SECRET")
         TWIML_APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")
 
+
         if not ACCOUNT_SID or not API_KEY_SID or not API_KEY_SECRET:
             return jsonify({"error": "Twilio configuration missing"}), 500
 
