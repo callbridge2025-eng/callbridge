@@ -182,6 +182,14 @@ const API_BASE = "https://callbridge.onrender.com";
 /* small helpers */
 const $ = id => document.getElementById(id);
 const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
+  function decodeJwtIdentity(jwt){
+  try{
+    const b64 = jwt.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+    const payload = JSON.parse(atob(b64));
+    return payload?.grants?.identity || payload?.identity || "(no identity)";
+  }catch(e){ return "(decode error)"; }
+}
+
   /* phone display formatter: ensures leading + when appropriate */
 /* phone display formatter:
    - US (+1XXXXXXXXXX) -> (XXX) XXX-XXXX
@@ -328,10 +336,9 @@ async function loadProfile(){
 }
 
 /* ---------- safe Twilio init (waits for SDK if needed) ---------- */
-async function safeInitTwilioDevice(tokenJson){
-  // tokenJson is object { token: "...", callerId: "..." }
-  try{
-    // wait up to ~5s for Twilio to be defined
+evice = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug: false });
+    console.log("Twilio.Device (v2) created");
+    console.log("Token identity:", decodeJwtIdentity(tokenJson.token));
     let tries = 0;
     while ((typeof Twilio === "undefined" || !Twilio.Device) && tries < 10){
       await new Promise(r => setTimeout(r, 500));
@@ -352,18 +359,15 @@ async function safeInitTwilioDevice(tokenJson){
 
     try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
 
-    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug: false });
-console.log("Twilio.Device (v2) created");
-device.register(); // <-- IMPORTANT
-
-
-    device.on("ready", () => console.log("✅ Twilio Device ready"));
-    device.on("error", (err) => console.error("Twilio Device error:", err));
+    device.register();
+    device.on("registered", () => console.log("✅ Device REGISTERED"));
+    device.on("unregistered", () => console.log("⚠️ Device UNREGISTERED"));
 
     // incoming (do NOT auto-accept)
     device.on("incoming", (connection) => {
       incomingConn = connection;
-      $("incomingFrom").innerText = "From: " + showE164(connection.parameters?.From || "");
+      const fromPstn = connection.parameters?.From || connection.parameters?.Caller || "";
+$("incomingFrom").innerText = "From: " + showE164(fromPstn);
       $("incomingModal").style.display = "flex";
       try {
         const ringtone = $("ringtoneAudio");
