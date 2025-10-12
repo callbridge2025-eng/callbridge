@@ -227,21 +227,65 @@ def twilio_token():
         data = request.get_json(force=True)
         user_id = data.get("user_id") or data.get("user") or None
         if not user_id:
-            # if no user_id provided, try auth header
+            # fallback to auth header -> email
             auth = request.headers.get("Authorization", "")
             user_id = auth_from_token(auth)
 
         if not user_id:
             return jsonify({"error": "user_id required"}), 400
 
+        # --- Look up user and their assigned number (required) ---
+        user = find_user_by_email(user_id)
+        if not user:
+            return jsonify({"error": "user not found", "who": user_id}), 404
+
+        caller_id = (user.get("assigned_number") or "").strip()
+        if not caller_id:
+            return jsonify({"error": "assigned number missing for user", "who": user_id}), 400
+
+        # --- Twilio config ---
         ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
         API_KEY_SID = os.environ.get("TWILIO_API_KEY_SID")
         API_KEY_SECRET = os.environ.get("TWILIO_API_KEY_SECRET")
-        TWIML_APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")
-
+        TWIML_APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")  # may be None
 
         if not ACCOUNT_SID or not API_KEY_SID or not API_KEY_SECRET:
-            return jsonify({"error": "Twilio configuration missing"}), 500
+            return jsonify({
+                "error": "Twilio configuration missing",
+                "missing": {
+                    "TWILIO_ACCOUNT_SID": bool(ACCOUNT_SID),
+                    "TWILIO_API_KEY_SID": bool(API_KEY_SID),
+                    "TWILIO_API_KEY_SECRET": bool(API_KEY_SECRET)
+                }
+            }), 500
+
+        # --- Build token ---
+        token = AccessToken(ACCOUNT_SID, API_KEY_SID, API_KEY_SECRET, identity=str(user_id))
+        voice_grant = VoiceGrant(incoming_allow=True)
+
+        # Only attach outgoing app SID if present (avoid None crash)
+        if TWIML_APP_SID:
+            voice_grant.outgoing_application_sid = TWIML_APP_SID
+        else:
+            # If you expect to place outbound PSTN calls, this is required.
+            # Returning 500 with a clear message so you can fix env var.
+            return jsonify({
+                "error": "TWIML app SID missing",
+                "hint": "Set TWILIO_TWIML_APP_SID to your TwiML App SID",
+            }), 500
+
+        token.add_grant(voice_grant)
+        jwt = token.to_jwt()
+        if isinstance(jwt, bytes):
+            jwt = jwt.decode("utf-8")
+
+        return jsonify({"token": jwt, "callerId": caller_id})
+
+    except Exception as e:
+        # Surface the error to logs and return structured JSON
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error", "detail": str(e)}), 500
+
 
         # Identity = user's email (so From=client:<email> reaches /voice)
         token = AccessToken(ACCOUNT_SID, API_KEY_SID, API_KEY_SECRET, identity=str(user_id))
