@@ -227,67 +227,21 @@ def twilio_token():
         data = request.get_json(force=True)
         user_id = data.get("user_id") or data.get("user") or None
         if not user_id:
-            # fallback to auth header -> email
+            # if no user_id provided, try auth header
             auth = request.headers.get("Authorization", "")
             user_id = auth_from_token(auth)
 
         if not user_id:
             return jsonify({"error": "user_id required"}), 400
 
-        # --- Look up user and their assigned number (required) ---
-        user = find_user_by_email(user_id)
-        if not user:
-            return jsonify({"error": "user not found", "who": user_id}), 404
-
-        caller_id = (user.get("assigned_number") or "").strip()
-        if not caller_id:
-            return jsonify({"error": "assigned number missing for user", "who": user_id}), 400
-
-        # --- Twilio config ---
         ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
         API_KEY_SID = os.environ.get("TWILIO_API_KEY_SID")
         API_KEY_SECRET = os.environ.get("TWILIO_API_KEY_SECRET")
-        TWIML_APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")  # may be None
+        TWIML_APP_SID = os.environ.get("TWILIO_TWIML_APP_SID")
 
         if not ACCOUNT_SID or not API_KEY_SID or not API_KEY_SECRET:
-            return jsonify({
-                "error": "Twilio configuration missing",
-                "missing": {
-                    "TWILIO_ACCOUNT_SID": bool(ACCOUNT_SID),
-                    "TWILIO_API_KEY_SID": bool(API_KEY_SID),
-                    "TWILIO_API_KEY_SECRET": bool(API_KEY_SECRET)
-                }
-            }), 500
+            return jsonify({"error": "Twilio configuration missing"}), 500
 
-        # --- Build token ---
-        token = AccessToken(ACCOUNT_SID, API_KEY_SID, API_KEY_SECRET, identity=str(user_id))
-        voice_grant = VoiceGrant(incoming_allow=True)
-
-        # Only attach outgoing app SID if present (avoid None crash)
-        if TWIML_APP_SID:
-            voice_grant.outgoing_application_sid = TWIML_APP_SID
-        else:
-            # If you expect to place outbound PSTN calls, this is required.
-            # Returning 500 with a clear message so you can fix env var.
-            return jsonify({
-                "error": "TWIML app SID missing",
-                "hint": "Set TWILIO_TWIML_APP_SID to your TwiML App SID",
-            }), 500
-
-        token.add_grant(voice_grant)
-        jwt = token.to_jwt()
-        if isinstance(jwt, bytes):
-            jwt = jwt.decode("utf-8")
-
-        return jsonify({"token": jwt, "callerId": caller_id})
-
-    except Exception as e:
-        # Surface the error to logs and return structured JSON
-        traceback.print_exc()
-        return jsonify({"error": "Internal server error", "detail": str(e)}), 500
-
-
-        # Identity = user's email (so From=client:<email> reaches /voice)
         token = AccessToken(ACCOUNT_SID, API_KEY_SID, API_KEY_SECRET, identity=str(user_id))
         voice_grant = VoiceGrant(outgoing_application_sid=TWIML_APP_SID, incoming_allow=True)
         token.add_grant(voice_grant)
@@ -295,65 +249,43 @@ def twilio_token():
         if isinstance(jwt, bytes):
             jwt = jwt.decode("utf-8")
 
-        # Resolve caller ID from user's assigned number (no shared fallback)
         user = find_user_by_email(user_id)
-        if not user:
-            return jsonify({"error": "user not found"}), 404
-
-        caller_id = (user.get("assigned_number") or "").strip()
-        if not caller_id:
-            return jsonify({"error": "assigned number missing for user"}), 400
+        caller_id = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
 
         return jsonify({"token": jwt, "callerId": caller_id})
-
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
-
 
 
 @app.route("/voice", methods=["POST"])
 def voice():
     """Twilio webhook: connects outgoing or incoming calls."""
     try:
-        to_number = request.form.get("To")  # present for browser -> PSTN
-        from_param = request.form.get("From")  # e.g. 'client:user@example.com' for browser-originated calls
-
-        # Try to extract the email identity from 'client:<email>'
-        user_email = None
-        if from_param and from_param.startswith("client:"):
-            user_email = from_param.split(":", 1)[1].strip().lower()
-
-        # Look up the caller's assigned number if we have an email
-        caller_id = None
-        if user_email:
-            user = find_user_by_email(user_email)
-            if user:
-                caller_id = (user.get("assigned_number") or "").strip()
-
-        # Fallback only if absolutely necessary (e.g., inbound PSTN -> client, or missing config)
-        if not caller_id:
-            caller_id = os.environ.get("TWILIO_CALLER_ID") or os.environ.get("TWILIO_PHONE_NUMBER")
+        to_number = request.form.get("To")
+        # 'From' will be something like 'client:user', not a real phone number
+        default_caller_id = (
+            os.environ.get("TWILIO_CALLER_ID") or
+            os.environ.get("TWILIO_PHONE_NUMBER")
+        )
 
         resp = VoiceResponse()
 
         if to_number:
             # Outgoing call from web client -> phone number
-            dial = Dial(callerId=caller_id)
+            dial = Dial(callerId=default_caller_id)
             dial.number(to_number)
             resp.append(dial)
         else:
-            # Incoming PSTN call -> route to a client identity
-            # If you want per-user routing for inbound, customize this part.
+            # Incoming call -> route to a client (browser app)
             dial = Dial()
-            dial.client("client")
+            dial.client("client")  # or a specific user identity
             resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
-
 
 
 
