@@ -320,8 +320,10 @@ def twilio_token():
 def voice():
     """Twilio webhook: connects outgoing (client->PSTN) or incoming (PSTN->client)."""
     try:
-        to_number = request.form.get("To")  # set for client->PSTN
-        # Twilio client identity of caller on client->PSTN, or blank on PSTN->inbound
+        # Outbound param from the web client:
+        outbound_to = request.form.get("To")  # set for client->PSTN only
+
+        # Identity of the Twilio Client making the outbound call (e.g., "client:user@example.com")
         from_param = request.form.get("From", "") or ""
         default_caller_id = (
             os.environ.get("TWILIO_CALLER_ID") or
@@ -330,8 +332,8 @@ def voice():
 
         resp = VoiceResponse()
 
-        if to_number:
-            # ===== Outgoing from web client -> PSTN =====
+        if outbound_to:
+            # ===== OUTGOING FROM WEB CLIENT -> PSTN =====
             requested_caller = request.form.get("CallerId", "")  # optional from client
             identity = from_param.split(":", 1)[1] if from_param.startswith("client:") else from_param
             user = find_user_by_email(identity) if identity else None
@@ -341,32 +343,44 @@ def voice():
                 requested_caller or user_assigned or default_caller_id,
                 default_region='US'
             )
-            to_number = to_e164(to_number, default_region='US')
+            outbound_to = to_e164(outbound_to, default_region='US')
+
+            print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
 
             dial = Dial(callerId=caller_id)
-            dial.number(to_number)
+            dial.number(outbound_to)
             resp.append(dial)
         else:
-            # ===== Incoming from PSTN -> route to the user who owns the called number =====
-            called_e164 = to_e164(request.values.get("To", ""), default_region='US')  # Twilio sends E.164
+            # ===== INCOMING PSTN -> route to the user who owns the called number =====
+            # Twilio may send either/both. Prefer 'Called' first.
+            called_raw = request.values.get("Called") or request.values.get("To") or ""
+            caller_raw = request.values.get("Caller") or request.values.get("From") or ""
+            called_e164 = to_e164(called_raw, default_region='US')
+            caller_e164 = to_e164(caller_raw, default_region='US')
+
+            print(f"[VOICE INBOUND] Called={called_raw} -> {called_e164} | From={caller_raw} -> {caller_e164}")
+
             target_user = find_user_by_assigned_number(called_e164)
 
-            dial = Dial()
-            if target_user and target_user.get("email"):
-                # Identity MUST match the one used in your AccessToken(identity=...)
-                dial.client(str(target_user["email"]))
-            else:
-                # No match found -> route to a lobby or reject
-                # dial.client("lobby")  # (optional: a catch-all client)
-                resp.say("We could not find a destination for this call. Goodbye.")
+            if not target_user or not target_user.get("email"):
+                # No destination — say a message and hang up (so you can hear it during tests).
+                resp.say("We could not find a destination for this call.")
+                print(f"[VOICE INBOUND] No user found for {called_e164}")
                 return str(resp), 200, {"Content-Type": "application/xml"}
 
+            identity = str(target_user["email"])
+            print(f"[VOICE INBOUND] Routing to identity={identity!r}")
+
+            dial = Dial()
+            # Identity MUST equal the AccessToken(identity=...) used in /twilio-token
+            dial.client(identity)
             resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+
 
 
 
