@@ -242,6 +242,7 @@ def twilio_token():
         if not ACCOUNT_SID or not API_KEY_SID or not API_KEY_SECRET:
             return jsonify({"error": "Twilio configuration missing"}), 500
 
+        # Identity = user's email (so From=client:<email> reaches /voice)
         token = AccessToken(ACCOUNT_SID, API_KEY_SID, API_KEY_SECRET, identity=str(user_id))
         voice_grant = VoiceGrant(outgoing_application_sid=TWIML_APP_SID, incoming_allow=True)
         token.add_grant(voice_grant)
@@ -249,7 +250,7 @@ def twilio_token():
         if isinstance(jwt, bytes):
             jwt = jwt.decode("utf-8")
 
-                # Resolve caller ID from user's assigned number
+        # Resolve caller ID from user's assigned number (no shared fallback)
         user = find_user_by_email(user_id)
         if not user:
             return jsonify({"error": "user not found"}), 404
@@ -259,6 +260,11 @@ def twilio_token():
             return jsonify({"error": "assigned number missing for user"}), 400
 
         return jsonify({"token": jwt, "callerId": caller_id})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error"}), 500
+
 
 
 @app.route("/voice", methods=["POST"])
