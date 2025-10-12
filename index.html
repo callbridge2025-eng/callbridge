@@ -8,6 +8,7 @@
     :root {
       --bg:#f7f9fc; --card:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
       --accent:#2563eb; --accent-2:#1d4ed8; --border:#d1d5db; --danger:#dc2626; --danger-2:#b91c1c;
+      --log:#374151; --chip:#eef2ff; --sub:#9ca3af;
     }
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--ink); }
@@ -18,15 +19,13 @@
     .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; box-shadow: 0 2px 14px rgba(17,24,39,.05); }
     .row { display:flex; gap:10px; align-items:center; }
     .col { display:flex; flex-direction:column; gap:10px; }
-    input, button {
-      width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:#fff; color:var(--ink);
-    }
-    input::placeholder { color:#9ca3af; }
+    input, button { width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:#fff; color:var(--ink); }
+    input::placeholder { color:var(--sub); }
     button { cursor:pointer; font-weight:600; }
     .btn-primary { background:var(--accent); border-color:var(--accent-2); color:#fff; }
     .btn-ghost { background:#fff; }
     .btn-danger { background:var(--danger); border-color:var(--danger-2); color:#fff; }
-    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:#eef2ff; border:1px solid var(--border); font-size:12px; color:#374151; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:var(--chip); border:1px solid var(--border); font-size:12px; color:#374151; }
     .muted { color:var(--muted); font-size:14px; }
     .divider { height:1px; background:var(--line); margin:8px 0; }
     .section-title { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
@@ -39,6 +38,7 @@
     .kprow { display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; }
     .kbd { text-align:center; padding:10px 0; border:1px dashed var(--border); border-radius:8px; background:#f9fafb; }
     .right { text-align:right; }
+    .error { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:10px 12px; border-radius:10px; }
     audio { width:100%; margin-top:8px; }
     @media (max-width: 980px){ .grid { grid-template-columns: 1fr; } }
   </style>
@@ -53,6 +53,8 @@
         <button id="loginBtn" class="btn-primary" style="min-width:120px;">Log in</button>
       </div>
     </header>
+
+    <div id="err" class="error hidden"></div>
 
     <div class="grid">
       <!-- LEFT: DIALER / CALL CONTROLS -->
@@ -123,7 +125,7 @@
 
         <div class="divider"></div>
         <div class="muted">Logs</div>
-        <pre id="log" style="white-space:pre-wrap; font-size:12px; line-height:1.3; margin:6px 0 0; color:#374151; max-height:180px; overflow:auto;"></pre>
+        <pre id="log" style="white-space:pre-wrap; font-size:12px; line-height:1.3; margin:6px 0 0; color:var(--log); max-height:180px; overflow:auto;"></pre>
       </div>
 
       <!-- CENTER: HISTORY -->
@@ -153,15 +155,27 @@
   <!-- Twilio Voice SDK v2 UMD -->
   <script src="https://unpkg.com/@twilio/voice-sdk@2/dist/twilio-voice.min.js"></script>
   <script>
-    // Serve over https:// or http://localhost (not file://).
+    // -------- BACKEND DISCOVERY / CONFIG --------
+    // 1) We try SAME-ORIGIN first (good if you host index.html with the backend).
+    // 2) Then we try any URLs you put in ALT_BASES below (edit to your Render URL).
+    const ALT_BASES = [
+      'https://callbridge-backend.onrender.com'  // <-- CHANGE this to your real backend URL if different
+    ];
+    let BASE = location.origin;
 
-    // BACKEND URL (your Render app)
-    const BASE = 'https://callbridge-backend.onrender.com';
+    async function pickBase() {
+      const candidates = [location.origin, ...ALT_BASES];
+      for (const b of candidates) {
+        try {
+          const r = await fetch(b + '/', { method:'GET' });
+          if (r.ok) { BASE = b; return b; }
+        } catch (e) {}
+      }
+      throw new Error('Cannot reach backend. Check ALT_BASES or host on same origin.');
+    }
 
-    // Twilio Device from UMD bundle
+    // -------- HELPERS --------
     const { Device } = Twilio;
-
-    // --- UI helpers
     const $ = (id) => document.getElementById(id);
     const ui = {
       email: $('email'), password: $('password'), loginBtn: $('loginBtn'),
@@ -171,20 +185,36 @@
       hangupBtn: $('hangupBtn'), callStatus: $('callStatus'), peer: $('peer'), remoteAudio: $('remoteAudio'),
       log: $('log'), history: $('history'), refreshHistory: $('refreshHistory'),
       p_email: $('p_email'), p_name: $('p_name'), p_number: $('p_number'), p_expiry: $('p_expiry'), p_role: $('p_role'),
+      err: $('err'),
     };
 
     let authToken = null; let me = null; let device = null; let call = null; let callStart = 0; let muted=false; let held=false;
 
+    function showErr(msg){ ui.err.textContent = msg; ui.err.classList.remove('hidden'); }
+    function clearErr(){ ui.err.classList.add('hidden'); ui.err.textContent = ''; }
     function log(){ const msg = Array.from(arguments).join(' '); console.log('[UI]', msg); ui.log.textContent += msg + '\n'; ui.log.scrollTop = ui.log.scrollHeight; }
     const showDialer = ()=>{ ui.dialerPane.classList.remove('hidden'); ui.activePane.classList.add('hidden'); };
     const showActive = ()=>{ ui.dialerPane.classList.add('hidden'); ui.activePane.classList.remove('hidden'); };
 
-    // LOGIN
-    $('loginBtn').addEventListener('click', async () => {
+    // -------- STARTUP: pick backend --------
+    (async () => {
+      try {
+        await pickBase();
+        log('Using backend:', BASE);
+      } catch(e) {
+        showErr(e.message);
+      }
+    })();
+
+    // -------- LOGIN --------
+    ui.loginBtn.addEventListener('click', async () => {
+      clearErr();
       try{
         const body = { email: ui.email.value.trim(), password: ui.password.value };
+        if (!body.email || !body.password) throw new Error('Enter email and password.');
         const r = await fetch(BASE + '/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        const j = await r.json(); if(!r.ok) throw new Error(j.error || 'Login failed');
+        const j = await r.json().catch(()=>({ error: 'Non-JSON response' }));
+        if(!r.ok) throw new Error(j.error || ('Login failed (' + r.status + ')'));
         authToken = j.token; me = j.user; log('Logged in:', me.email);
         ui.assigned.textContent = me.assigned_number || '—';
         ui.p_email.textContent = me.email || '—';
@@ -194,43 +224,54 @@
         ui.p_role.textContent = me.role || '—';
         await registerDevice();
         await loadHistory();
-      }catch(e){ alert(e.message); log('Login error:', e.message); }
+      }catch(e){
+        showErr('Login error: ' + e.message);
+        log('Login error:', e.message);
+      }
     });
 
-    // DEVICE
+    // -------- DEVICE --------
     async function getVoiceToken(){
       const r = await fetch(BASE + '/twilio-token', {
         method:'POST',
         headers:{'Content-Type':'application/json', ...(authToken?{'Authorization':'Bearer ' + authToken}:{})},
         body: JSON.stringify({ user_id: me.email })
       });
-      const j = await r.json(); if(!r.ok) throw new Error(j.error || 'Token error'); return j.token;
+      const j = await r.json().catch(()=>({ error:'Non-JSON token response' }));
+      if(!r.ok) throw new Error(j.error || ('Token error ('+r.status+')'));
+      return j.token;
     }
 
     async function registerDevice(){
-      const token = await getVoiceToken();
-      if (device) { try{ await device.destroy(); }catch(e){} }
-      device = new Device(token, { logLevel: 'error', codecPreferences: ['opus','pcmu'] });
-      device.on('registered', ()=>{ ui.devStatus.textContent = 'Registered'; log('Device registered'); });
-      device.on('error', (e)=>{ ui.devStatus.textContent = 'Error'; log('Device error:', e.message); alert('Device error: ' + e.message); });
-      device.on('incoming', (c)=> handleIncoming(c));
-      device.on('tokenWillExpire', async ()=>{ log('Refreshing token…'); const t = await getVoiceToken(); await device.updateToken(t); });
-      await device.register();
+      try{
+        const token = await getVoiceToken();
+        if (device) { try{ await device.destroy(); }catch(e){} }
+        device = new Device(token, { logLevel: 'error', codecPreferences: ['opus','pcmu'] });
+        device.on('registered', ()=>{ ui.devStatus.textContent = 'Registered'; log('Device registered'); });
+        device.on('error', (e)=>{ ui.devStatus.textContent = 'Error'; showErr('Device error: ' + e.message); log('Device error:', e.message); });
+        device.on('incoming', (c)=> handleIncoming(c));
+        device.on('tokenWillExpire', async ()=>{ log('Refreshing token…'); const t = await getVoiceToken(); await device.updateToken(t); });
+        await device.register();
+      }catch(e){
+        showErr(e.message);
+        log('Register device error:', e.message);
+      }
     }
 
-    // OUTBOUND
+    // -------- OUTBOUND --------
     document.querySelectorAll('[data-digit]').forEach(el=> el.addEventListener('click', ()=>{ ui.to.value += el.getAttribute('data-digit'); }));
-    $('callBtn').addEventListener('click', async ()=>{
+    ui.callBtn.addEventListener('click', async ()=>{
+      clearErr();
       try{
         const to = ui.to.value.trim(); if(!to.startsWith('+')) throw new Error('Use E.164 format, e.g. +14155550123');
         ui.peer.textContent = to; ui.callStatus.textContent = 'Dialing…'; showActive();
         call = await device.connect({ params: { To: to, user_id: me.email } });
         callStart = Date.now();
         hookCallEvents(call);
-      }catch(e){ showDialer(); alert(e.message); log('Call error:', e.message); }
+      }catch(e){ showDialer(); showErr(e.message); log('Call error:', e.message); }
     });
 
-    // INBOUND
+    // -------- INBOUND --------
     function handleIncoming(c){
       const from = (c.parameters && c.parameters.From) || 'Unknown';
       if (confirm('Incoming call from ' + from + '. Accept?')) {
@@ -244,7 +285,7 @@
       try{ if (c.mediaStream) ui.remoteAudio.srcObject = c.mediaStream; }catch(e){}
       c.on('accept', ()=>{ ui.callStatus.textContent = 'Connected'; });
       c.on('disconnect', ()=>{ ui.callStatus.textContent = 'Ended'; finalizeCall('Completed'); });
-      c.on('error', (e)=>{ log('Call error event:', e.message); finalizeCall('Error'); });
+      c.on('error', (e)=>{ showErr('Call error: ' + e.message); log('Call error event:', e.message); finalizeCall('Error'); });
     }
 
     function finalizeCall(status){
@@ -255,15 +296,15 @@
       showDialer(); loadHistory();
     }
 
-    // CONTROLS
-    $('hangupBtn').addEventListener('click', ()=>{ if(call) call.disconnect(); });
-    $('muteBtn').addEventListener('click', ()=>{ if(!call) return; muted = !muted; try{ call.mute(muted);}catch(e){} ui.muteBtn.textContent = muted? 'Unmute':'Mute'; });
-    $('holdBtn').addEventListener('click', async ()=>{ if(!call) return; held = !held; try{ await call.hold(held);}catch(e){} ui.holdBtn.textContent = held? 'Unhold':'Hold'; });
-    $('keypadBtn').addEventListener('click', ()=> ui.dtmfPad.classList.toggle('hidden'));
+    // -------- CONTROLS --------
+    ui.hangupBtn.addEventListener('click', ()=>{ if(call) call.disconnect(); });
+    ui.muteBtn.addEventListener('click', ()=>{ if(!call) return; muted = !muted; try{ call.mute(muted);}catch(e){} ui.muteBtn.textContent = muted? 'Unmute':'Mute'; });
+    ui.holdBtn.addEventListener('click', async ()=>{ if(!call) return; held = !held; try{ await call.hold(held);}catch(e){} ui.holdBtn.textContent = held? 'Unhold':'Hold'; });
+    ui.keypadBtn.addEventListener('click', ()=> ui.dtmfPad.classList.toggle('hidden'));
     document.querySelectorAll('[data-dtmf]').forEach(el=> el.addEventListener('click', ()=>{ if(call) try{ call.sendDigits(el.getAttribute('data-dtmf')); }catch(e){} }));
 
-    // HISTORY
-    $('refreshHistory').addEventListener('click', loadHistory);
+    // -------- HISTORY --------
+    ui.refreshHistory.addEventListener('click', loadHistory);
     async function loadHistory(){
       try{
         const r = await fetch(BASE + '/calls'); const j = await r.json();
@@ -275,7 +316,7 @@
                            <div class="right"><div>${row.duration||0}s</div><small>${row.user_email||''}</small></div>`;
           ui.history.appendChild(el);
         });
-      }catch(e){ log('History error:', e.message); }
+      }catch(e){ showErr('History error: ' + e.message); log('History error:', e.message); }
     }
 
     async function saveCallLog({duration=0,to='',status='Completed'}){
