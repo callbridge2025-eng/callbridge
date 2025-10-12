@@ -320,10 +320,7 @@ def twilio_token():
 def voice():
     """Twilio webhook: outgoing (client->PSTN) or incoming (PSTN->client)."""
     try:
-        # OUTBOUND param from web client; if present, it's an outgoing PSTN call
-        outbound_to = request.form.get("To")
-
-        # Identity of Twilio Client making the outbound call
+        outbound_to = request.form.get("To")  # present for client->PSTN
         from_param = request.form.get("From", "") or ""
         default_caller_id = (
             os.environ.get("TWILIO_CALLER_ID") or
@@ -349,7 +346,6 @@ def voice():
             resp.append(dial)
         else:
             # ===== INCOMING: PSTN -> client =====
-            # Twilio often sends both; prefer Called.
             called_raw = request.values.get("Called") or request.values.get("To") or ""
             caller_raw = request.values.get("Caller") or request.values.get("From") or ""
             called_e164 = to_e164(called_raw, default_region='US')
@@ -358,7 +354,6 @@ def voice():
             print(f"[VOICE INBOUND] Called(raw)={called_raw} -> {called_e164} | From(raw)={caller_raw} -> {caller_e164}")
 
             target_user = find_user_by_assigned_number(called_e164)
-
             if not target_user or not target_user.get("email"):
                 resp.say("We could not find a destination for this call. Goodbye.")
                 print(f"[VOICE INBOUND] No user mapped to {called_e164}")
@@ -367,17 +362,20 @@ def voice():
             identity = str(target_user["email"]).strip()
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
-            # Give Twilio visibility into ringing outcome
+            # Attach a status callback so we see if it rings/fails/no-answer
             dial = Dial(timeout=25)
-            # IMPORTANT: status callback to see why it didn't ring
-            dial.client(identity, status_callback=f"{request.url_root.rstrip('/')}/client-status",
-                        status_callback_event=["initiated", "ringing", "answered", "completed"])
+            dial.client(
+                identity,
+                status_callback=f"{request.url_root.rstrip('/')}/client-status",
+                status_callback_event=["initiated", "ringing", "answered", "completed"]
+            )
             resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+
 
 
 
