@@ -318,12 +318,12 @@ def twilio_token():
 
 @app.route("/voice", methods=["POST"])
 def voice():
-    """Twilio webhook: connects outgoing (client->PSTN) or incoming (PSTN->client)."""
+    """Twilio webhook: outgoing (client->PSTN) or incoming (PSTN->client)."""
     try:
-        # Outbound param from the web client:
-        outbound_to = request.form.get("To")  # set for client->PSTN only
+        # OUTBOUND param from web client; if present, it's an outgoing PSTN call
+        outbound_to = request.form.get("To")
 
-        # Identity of the Twilio Client making the outbound call (e.g., "client:user@example.com")
+        # Identity of Twilio Client making the outbound call
         from_param = request.form.get("From", "") or ""
         default_caller_id = (
             os.environ.get("TWILIO_CALLER_ID") or
@@ -333,16 +333,13 @@ def voice():
         resp = VoiceResponse()
 
         if outbound_to:
-            # ===== OUTGOING FROM WEB CLIENT -> PSTN =====
-            requested_caller = request.form.get("CallerId", "")  # optional from client
+            # ===== OUTGOING: client -> PSTN =====
+            requested_caller = request.form.get("CallerId", "")
             identity = from_param.split(":", 1)[1] if from_param.startswith("client:") else from_param
             user = find_user_by_email(identity) if identity else None
             user_assigned = (user or {}).get("assigned_number") if user else None
 
-            caller_id = to_e164(
-                requested_caller or user_assigned or default_caller_id,
-                default_region='US'
-            )
+            caller_id = to_e164(requested_caller or user_assigned or default_caller_id, default_region='US')
             outbound_to = to_e164(outbound_to, default_region='US')
 
             print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
@@ -351,35 +348,49 @@ def voice():
             dial.number(outbound_to)
             resp.append(dial)
         else:
-            # ===== INCOMING PSTN -> route to the user who owns the called number =====
-            # Twilio may send either/both. Prefer 'Called' first.
+            # ===== INCOMING: PSTN -> client =====
+            # Twilio often sends both; prefer Called.
             called_raw = request.values.get("Called") or request.values.get("To") or ""
             caller_raw = request.values.get("Caller") or request.values.get("From") or ""
             called_e164 = to_e164(called_raw, default_region='US')
             caller_e164 = to_e164(caller_raw, default_region='US')
 
-            print(f"[VOICE INBOUND] Called={called_raw} -> {called_e164} | From={caller_raw} -> {caller_e164}")
+            print(f"[VOICE INBOUND] Called(raw)={called_raw} -> {called_e164} | From(raw)={caller_raw} -> {caller_e164}")
 
             target_user = find_user_by_assigned_number(called_e164)
 
             if not target_user or not target_user.get("email"):
-                # No destination — say a message and hang up (so you can hear it during tests).
-                resp.say("We could not find a destination for this call.")
-                print(f"[VOICE INBOUND] No user found for {called_e164}")
+                resp.say("We could not find a destination for this call. Goodbye.")
+                print(f"[VOICE INBOUND] No user mapped to {called_e164}")
                 return str(resp), 200, {"Content-Type": "application/xml"}
 
-            identity = str(target_user["email"])
+            identity = str(target_user["email"]).strip()
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
-            dial = Dial()
-            # Identity MUST equal the AccessToken(identity=...) used in /twilio-token
-            dial.client(identity)
+            # Give Twilio visibility into ringing outcome
+            dial = Dial(timeout=25)
+            # IMPORTANT: status callback to see why it didn't ring
+            dial.client(identity, status_callback=f"{request.url_root.rstrip('/')}/client-status",
+                        status_callback_event=["initiated", "ringing", "answered", "completed"])
             resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+
+
+
+@app.route("/client-status", methods=["POST"])
+def client_status():
+    # Twilio posts status for attempts to reach the <Client> identity
+    try:
+        # You will see: CallSid, CallStatus (queued|ringing|in-progress|completed|busy|no-answer|failed), To, From, Timestamp
+        print("[CLIENT STATUS]", dict(request.values))
+        return ("", 204)
+    except Exception as e:
+        print("client-status error:", e)
+        return ("", 204)
 
 
 
