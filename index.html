@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext y='50' x='6' font-size='48'%3E%F0%9F%93%9E%3C/text%3E%3C/svg%3E">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CallBridge – Web Dialer</title>
   <style>
@@ -69,18 +70,10 @@
         <div id="dialerPane" class="col">
           <input id="to" placeholder="Enter E.164 number e.g. +14155550123" />
           <div class="pad">
-            <button data-digit="1">1</button>
-            <button data-digit="2">2</button>
-            <button data-digit="3">3</button>
-            <button data-digit="4">4</button>
-            <button data-digit="5">5</button>
-            <button data-digit="6">6</button>
-            <button data-digit="7">7</button>
-            <button data-digit="8">8</button>
-            <button data-digit="9">9</button>
-            <button data-digit="*">*</button>
-            <button data-digit="0">0</button>
-            <button data-digit="#">#</button>
+            <button data-digit="1">1</button><button data-digit="2">2</button><button data-digit="3">3</button>
+            <button data-digit="4">4</button><button data-digit="5">5</button><button data-digit="6">6</button>
+            <button data-digit="7">7</button><button data-digit="8">8</button><button data-digit="9">9</button>
+            <button data-digit="*">*</button><button data-digit="0">0</button><button data-digit="#">#</button>
           </div>
           <button id="callBtn" class="btn-primary">Call</button>
         </div>
@@ -88,37 +81,21 @@
         <!-- Active call UI -->
         <div id="activePane" class="col hidden">
           <div class="row" style="justify-content:space-between;">
-            <div>
-              <div class="muted">Peer</div>
-              <div id="peer" style="font-weight:700;">—</div>
-            </div>
-            <div class="right">
-              <div class="muted">Status</div>
-              <div id="callStatus" class="pill">Connecting…</div>
-            </div>
+            <div><div class="muted">Peer</div><div id="peer" style="font-weight:700;">—</div></div>
+            <div class="right"><div class="muted">Status</div><div id="callStatus" class="pill">Connecting…</div></div>
           </div>
           <div class="divider"></div>
-
           <div class="row">
             <button id="muteBtn" class="btn-ghost">Mute</button>
             <button id="holdBtn" class="btn-ghost">Hold</button>
             <button id="keypadBtn" class="btn-ghost">Keypad</button>
           </div>
           <div id="dtmfPad" class="kprow hidden">
-            <div class="kbd" data-dtmf="1">1</div>
-            <div class="kbd" data-dtmf="2">2</div>
-            <div class="kbd" data-dtmf="3">3</div>
-            <div class="kbd" data-dtmf="4">4</div>
-            <div class="kbd" data-dtmf="5">5</div>
-            <div class="kbd" data-dtmf="6">6</div>
-            <div class="kbd" data-dtmf="7">7</div>
-            <div class="kbd" data-dtmf="8">8</div>
-            <div class="kbd" data-dtmf="9">9</div>
-            <div class="kbd" data-dtmf="*">*</div>
-            <div class="kbd" data-dtmf="0">0</div>
-            <div class="kbd" data-dtmf="#">#</div>
+            <div class="kbd" data-dtmf="1">1</div><div class="kbd" data-dtmf="2">2</div><div class="kbd" data-dtmf="3">3</div>
+            <div class="kbd" data-dtmf="4">4</div><div class="kbd" data-dtmf="5">5</div><div class="kbd" data-dtmf="6">6</div>
+            <div class="kbd" data-dtmf="7">7</div><div class="kbd" data-dtmf="8">8</div><div class="kbd" data-dtmf="9">9</div>
+            <div class="kbd" data-dtmf="*">*</div><div class="kbd" data-dtmf="0">0</div><div class="kbd" data-dtmf="#">#</div>
           </div>
-
           <button id="hangupBtn" class="btn-danger">Hang up</button>
           <audio id="remoteAudio" autoplay></audio>
         </div>
@@ -152,179 +129,188 @@
     </div>
   </div>
 
-  <!-- Twilio Voice SDK v2 UMD -->
-  <script src="https://unpkg.com/@twilio/voice-sdk@2/dist/twilio-voice.min.js"></script>
   <script>
-    // -------- BACKEND DISCOVERY / CONFIG --------
-    // 1) We try SAME-ORIGIN first (good if you host index.html with the backend).
-    // 2) Then we try any URLs you put in ALT_BASES below (edit to your Render URL).
-    const ALT_BASES = [
-      'https://callbridge-backend.onrender.com'  // <-- CHANGE this to your real backend URL if different
-    ];
-    let BASE = location.origin;
-
-    async function pickBase() {
-      const candidates = [location.origin, ...ALT_BASES];
-      for (const b of candidates) {
-        try {
-          const r = await fetch(b + '/', { method:'GET' });
-          if (r.ok) { BASE = b; return b; }
-        } catch (e) {}
-      }
-      throw new Error('Cannot reach backend. Check ALT_BASES or host on same origin.');
+    // ========= Robust loader for Twilio Voice SDK v2 (handles blocked CDN) =========
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src; s.async = true; s.onload = () => resolve(src); s.onerror = () => reject(new Error('Failed ' + src));
+        document.head.appendChild(s);
+      });
     }
+    async function loadTwilioSDK() {
+      const candidates = [
+        'https://unpkg.com/@twilio/voice-sdk@2/dist/twilio-voice.min.js',
+        'https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2/dist/twilio-voice.min.js'
+      ];
+      let lastErr;
+      for (const url of candidates) {
+        try { await loadScript(url); if (window.Twilio) return; } catch (e) { lastErr = e; }
+      }
+      throw lastErr || new Error('Could not load Twilio SDK from CDNs');
+    }
+  </script>
 
-    // -------- HELPERS --------
-    const { Device } = Twilio;
-    const $ = (id) => document.getElementById(id);
-    const ui = {
-      email: $('email'), password: $('password'), loginBtn: $('loginBtn'),
-      devStatus: $('devStatus'), assigned: $('assigned'),
-      dialerPane: $('dialerPane'), activePane: $('activePane'), to: $('to'), callBtn: $('callBtn'),
-      muteBtn: $('muteBtn'), holdBtn: $('holdBtn'), keypadBtn: $('keypadBtn'), dtmfPad: $('dtmfPad'),
-      hangupBtn: $('hangupBtn'), callStatus: $('callStatus'), peer: $('peer'), remoteAudio: $('remoteAudio'),
-      log: $('log'), history: $('history'), refreshHistory: $('refreshHistory'),
-      p_email: $('p_email'), p_name: $('p_name'), p_number: $('p_number'), p_expiry: $('p_expiry'), p_role: $('p_role'),
-      err: $('err'),
-    };
+  <!-- Main app script (waits for SDK to be loaded) -->
+  <script>
+    (async function main(){
+      const $ = (id) => document.getElementById(id);
+      const ui = {
+        email: $('email'), password: $('password'), loginBtn: $('loginBtn'),
+        devStatus: $('devStatus'), assigned: $('assigned'),
+        dialerPane: $('dialerPane'), activePane: $('activePane'), to: $('to'), callBtn: $('callBtn'),
+        muteBtn: $('muteBtn'), holdBtn: $('holdBtn'), keypadBtn: $('keypadBtn'), dtmfPad: $('dtmfPad'),
+        hangupBtn: $('hangupBtn'), callStatus: $('callStatus'), peer: $('peer'), remoteAudio: $('remoteAudio'),
+        log: $('log'), history: $('history'), refreshHistory: $('refreshHistory'),
+        p_email: $('p_email'), p_name: $('p_name'), p_number: $('p_number'), p_expiry: $('p_expiry'), p_role: $('p_role'),
+        err: $('err'),
+      };
 
-    let authToken = null; let me = null; let device = null; let call = null; let callStart = 0; let muted=false; let held=false;
+      function showErr(msg){ ui.err.textContent = msg; ui.err.classList.remove('hidden'); }
+      function clearErr(){ ui.err.classList.add('hidden'); ui.err.textContent = ''; }
+      function log(){ const m=[...arguments].join(' '); console.log('[UI]', m); ui.log.textContent += m + '\n'; ui.log.scrollTop = ui.log.scrollHeight; }
+      const showDialer = ()=>{ ui.dialerPane.classList.remove('hidden'); ui.activePane.classList.add('hidden'); };
+      const showActive = ()=>{ ui.dialerPane.classList.add('hidden'); ui.activePane.classList.remove('hidden'); };
 
-    function showErr(msg){ ui.err.textContent = msg; ui.err.classList.remove('hidden'); }
-    function clearErr(){ ui.err.classList.add('hidden'); ui.err.textContent = ''; }
-    function log(){ const msg = Array.from(arguments).join(' '); console.log('[UI]', msg); ui.log.textContent += msg + '\n'; ui.log.scrollTop = ui.log.scrollHeight; }
-    const showDialer = ()=>{ ui.dialerPane.classList.remove('hidden'); ui.activePane.classList.add('hidden'); };
-    const showActive = ()=>{ ui.dialerPane.classList.add('hidden'); ui.activePane.classList.remove('hidden'); };
-
-    // -------- STARTUP: pick backend --------
-    (async () => {
       try {
-        await pickBase();
-        log('Using backend:', BASE);
-      } catch(e) {
-        showErr(e.message);
+        await loadTwilioSDK();
+        if (!window.Twilio) throw new Error('Twilio SDK not available after load.');
+      } catch (e) {
+        showErr('Could not load Twilio SDK. If you are behind a firewall, allow unpkg.com or jsdelivr.net. Details: ' + e.message);
+        return;
+      }
+
+      // -------- BACKEND DISCOVERY / CONFIG --------
+      const ALT_BASES = [
+        'https://callbridge-backend.onrender.com'  // <-- your Render backend URL
+      ];
+      let BASE = location.origin;
+      async function pickBase() {
+        const candidates = [location.origin, ...ALT_BASES];
+        for (const b of candidates) {
+          try { const r = await fetch(b + '/', { method:'GET' }); if (r.ok) { BASE = b; return b; } } catch(e){}
+        }
+        throw new Error('Cannot reach backend. Check ALT_BASES or host on same origin.');
+      }
+      try { await pickBase(); log('Using backend:', BASE); } catch(e){ showErr(e.message); return; }
+
+      // -------- Twilio Device setup --------
+      const { Device } = window.Twilio;
+      let authToken = null, me = null, device = null, call = null, callStart = 0, muted=false, held=false;
+
+      // LOGIN
+      ui.loginBtn.addEventListener('click', async () => {
+        clearErr();
+        try{
+          const body = { email: ui.email.value.trim(), password: ui.password.value };
+          if (!body.email || !body.password) throw new Error('Enter email and password.');
+          const r = await fetch(BASE + '/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+          const j = await r.json().catch(()=>({ error:'Non-JSON response' }));
+          if(!r.ok) throw new Error(j.error || ('Login failed ('+r.status+')'));
+          authToken = j.token; me = j.user; log('Logged in:', me.email);
+          ui.assigned.textContent = me.assigned_number || '—';
+          ui.p_email.textContent = me.email || '—';
+          ui.p_name.textContent = me.display_name || '—';
+          ui.p_number.textContent = me.assigned_number || '—';
+          ui.p_expiry.textContent = me.expiry_date || '—';
+          ui.p_role.textContent = me.role || '—';
+          await registerDevice();
+          await loadHistory();
+        }catch(e){ showErr('Login error: ' + e.message); log('Login error:', e.message); }
+      });
+
+      async function getVoiceToken(){
+        const r = await fetch(BASE + '/twilio-token', {
+          method:'POST',
+          headers:{'Content-Type':'application/json', ...(authToken?{'Authorization':'Bearer ' + authToken}:{})},
+          body: JSON.stringify({ user_id: me.email })
+        });
+        const j = await r.json().catch(()=>({ error:'Non-JSON token response' }));
+        if(!r.ok) throw new Error(j.error || ('Token error ('+r.status+')'));
+        return j.token;
+      }
+
+      async function registerDevice(){
+        try{
+          const token = await getVoiceToken();
+          if (device) { try{ await device.destroy(); }catch(e){} }
+          device = new Device(token, { logLevel: 'error', codecPreferences: ['opus','pcmu'] });
+          device.on('registered', ()=>{ ui.devStatus.textContent = 'Registered'; log('Device registered'); });
+          device.on('error', (e)=>{ ui.devStatus.textContent = 'Error'; showErr('Device error: ' + e.message); log('Device error:', e.message); });
+          device.on('incoming', (c)=> handleIncoming(c));
+          device.on('tokenWillExpire', async ()=>{ log('Refreshing token…'); const t = await getVoiceToken(); await device.updateToken(t); });
+          await device.register();
+        }catch(e){ showErr(e.message); log('Register device error:', e.message); }
+      }
+
+      // OUTBOUND
+      document.querySelectorAll('[data-digit]').forEach(el=> el.addEventListener('click', ()=>{ ui.to.value += el.getAttribute('data-digit'); }));
+      ui.callBtn.addEventListener('click', async ()=>{
+        clearErr();
+        try{
+          if (!me) throw new Error('Log in first.');
+          const to = ui.to.value.trim(); if(!to.startsWith('+')) throw new Error('Use E.164 format, e.g. +14155550123');
+          ui.peer.textContent = to; ui.callStatus.textContent = 'Dialing…'; showActive();
+          call = await device.connect({ params: { To: to, user_id: me.email } });
+          callStart = Date.now(); hookCallEvents(call);
+        }catch(e){ showDialer(); showErr(e.message); log('Call error:', e.message); }
+      });
+
+      // INBOUND
+      function handleIncoming(c){
+        const from = (c.parameters && c.parameters.From) || 'Unknown';
+        if (confirm('Incoming call from ' + from + '. Accept?')) {
+          c.accept();
+          ui.peer.textContent = from; ui.callStatus.textContent = 'Connected'; showActive();
+          call = c; callStart = Date.now(); hookCallEvents(call);
+        } else { c.reject(); }
+      }
+
+      function hookCallEvents(c){
+        try{ if (c.mediaStream) ui.remoteAudio.srcObject = c.mediaStream; }catch(e){}
+        c.on('accept', ()=>{ ui.callStatus.textContent = 'Connected'; });
+        c.on('disconnect', ()=>{ ui.callStatus.textContent = 'Ended'; finalizeCall('Completed'); });
+        c.on('error', (e)=>{ showErr('Call error: ' + e.message); log('Call error event:', e.message); finalizeCall('Error'); });
+      }
+
+      function finalizeCall(status){
+        const secs = callStart? Math.round((Date.now()-callStart)/1000) : 0;
+        const to = ui.peer.textContent || ui.to.value.trim();
+        saveCallLog({ duration: secs, to, status });
+        call = null; callStart = 0; muted=false; held=false; ui.muteBtn.textContent='Mute'; ui.holdBtn.textContent='Hold'; ui.dtmfPad.classList.add('hidden');
+        showDialer(); loadHistory();
+      }
+
+      // CONTROLS
+      ui.hangupBtn.addEventListener('click', ()=>{ if(call) call.disconnect(); });
+      ui.muteBtn.addEventListener('click', ()=>{ if(!call) return; muted = !muted; try{ call.mute(muted);}catch(e){} ui.muteBtn.textContent = muted? 'Unmute':'Mute'; });
+      ui.holdBtn.addEventListener('click', async ()=>{ if(!call) return; held = !held; try{ await call.hold(held);}catch(e){} ui.holdBtn.textContent = held? 'Unhold':'Hold'; });
+      ui.keypadBtn.addEventListener('click', ()=> ui.dtmfPad.classList.toggle('hidden'));
+      document.querySelectorAll('[data-dtmf]').forEach(el=> el.addEventListener('click', ()=>{ if(call) try{ call.sendDigits(el.getAttribute('data-dtmf')); }catch(e){} }));
+
+      // HISTORY
+      ui.refreshHistory.addEventListener('click', loadHistory);
+      async function loadHistory(){
+        try{
+          const r = await fetch(BASE + '/calls'); const j = await r.json();
+          if(!Array.isArray(j)) return; ui.history.innerHTML = '';
+          j.forEach(row=>{
+            const el = document.createElement('div'); el.className='item';
+            el.innerHTML = `<div><div><strong>${row.call_type||'-'}</strong></div><small>${row.created_at||''}</small></div>
+                             <div><div>From: ${row.from_number||'-'} → To: ${row.to_number||'-'}</div><small>${row.status||''}</small></div>
+                             <div class="right"><div>${row.duration||0}s</div><small>${row.user_email||''}</small></div>`;
+            ui.history.appendChild(el);
+          });
+        }catch(e){ showErr('History error: ' + e.message); log('History error:', e.message); }
+      }
+
+      async function saveCallLog({duration=0,to='',status='Completed'}){
+        try{
+          const payload = { created_at: new Date().toISOString().replace('T',' ').slice(0,16), from: me.assigned_number||'', to, duration, user_email: me.email, call_type:'outgoing', status };
+          await fetch(BASE + '/save-call', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        }catch(e){ log('Save log error:', e.message); }
       }
     })();
-
-    // -------- LOGIN --------
-    ui.loginBtn.addEventListener('click', async () => {
-      clearErr();
-      try{
-        const body = { email: ui.email.value.trim(), password: ui.password.value };
-        if (!body.email || !body.password) throw new Error('Enter email and password.');
-        const r = await fetch(BASE + '/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        const j = await r.json().catch(()=>({ error: 'Non-JSON response' }));
-        if(!r.ok) throw new Error(j.error || ('Login failed (' + r.status + ')'));
-        authToken = j.token; me = j.user; log('Logged in:', me.email);
-        ui.assigned.textContent = me.assigned_number || '—';
-        ui.p_email.textContent = me.email || '—';
-        ui.p_name.textContent = me.display_name || '—';
-        ui.p_number.textContent = me.assigned_number || '—';
-        ui.p_expiry.textContent = me.expiry_date || '—';
-        ui.p_role.textContent = me.role || '—';
-        await registerDevice();
-        await loadHistory();
-      }catch(e){
-        showErr('Login error: ' + e.message);
-        log('Login error:', e.message);
-      }
-    });
-
-    // -------- DEVICE --------
-    async function getVoiceToken(){
-      const r = await fetch(BASE + '/twilio-token', {
-        method:'POST',
-        headers:{'Content-Type':'application/json', ...(authToken?{'Authorization':'Bearer ' + authToken}:{})},
-        body: JSON.stringify({ user_id: me.email })
-      });
-      const j = await r.json().catch(()=>({ error:'Non-JSON token response' }));
-      if(!r.ok) throw new Error(j.error || ('Token error ('+r.status+')'));
-      return j.token;
-    }
-
-    async function registerDevice(){
-      try{
-        const token = await getVoiceToken();
-        if (device) { try{ await device.destroy(); }catch(e){} }
-        device = new Device(token, { logLevel: 'error', codecPreferences: ['opus','pcmu'] });
-        device.on('registered', ()=>{ ui.devStatus.textContent = 'Registered'; log('Device registered'); });
-        device.on('error', (e)=>{ ui.devStatus.textContent = 'Error'; showErr('Device error: ' + e.message); log('Device error:', e.message); });
-        device.on('incoming', (c)=> handleIncoming(c));
-        device.on('tokenWillExpire', async ()=>{ log('Refreshing token…'); const t = await getVoiceToken(); await device.updateToken(t); });
-        await device.register();
-      }catch(e){
-        showErr(e.message);
-        log('Register device error:', e.message);
-      }
-    }
-
-    // -------- OUTBOUND --------
-    document.querySelectorAll('[data-digit]').forEach(el=> el.addEventListener('click', ()=>{ ui.to.value += el.getAttribute('data-digit'); }));
-    ui.callBtn.addEventListener('click', async ()=>{
-      clearErr();
-      try{
-        const to = ui.to.value.trim(); if(!to.startsWith('+')) throw new Error('Use E.164 format, e.g. +14155550123');
-        ui.peer.textContent = to; ui.callStatus.textContent = 'Dialing…'; showActive();
-        call = await device.connect({ params: { To: to, user_id: me.email } });
-        callStart = Date.now();
-        hookCallEvents(call);
-      }catch(e){ showDialer(); showErr(e.message); log('Call error:', e.message); }
-    });
-
-    // -------- INBOUND --------
-    function handleIncoming(c){
-      const from = (c.parameters && c.parameters.From) || 'Unknown';
-      if (confirm('Incoming call from ' + from + '. Accept?')) {
-        c.accept();
-        ui.peer.textContent = from; ui.callStatus.textContent = 'Connected'; showActive();
-        call = c; callStart = Date.now(); hookCallEvents(call);
-      } else { c.reject(); }
-    }
-
-    function hookCallEvents(c){
-      try{ if (c.mediaStream) ui.remoteAudio.srcObject = c.mediaStream; }catch(e){}
-      c.on('accept', ()=>{ ui.callStatus.textContent = 'Connected'; });
-      c.on('disconnect', ()=>{ ui.callStatus.textContent = 'Ended'; finalizeCall('Completed'); });
-      c.on('error', (e)=>{ showErr('Call error: ' + e.message); log('Call error event:', e.message); finalizeCall('Error'); });
-    }
-
-    function finalizeCall(status){
-      const secs = callStart? Math.round((Date.now()-callStart)/1000) : 0;
-      const to = ui.peer.textContent || ui.to.value.trim();
-      saveCallLog({ duration: secs, to, status });
-      call = null; callStart = 0; muted=false; held=false; ui.muteBtn.textContent='Mute'; ui.holdBtn.textContent='Hold'; ui.dtmfPad.classList.add('hidden');
-      showDialer(); loadHistory();
-    }
-
-    // -------- CONTROLS --------
-    ui.hangupBtn.addEventListener('click', ()=>{ if(call) call.disconnect(); });
-    ui.muteBtn.addEventListener('click', ()=>{ if(!call) return; muted = !muted; try{ call.mute(muted);}catch(e){} ui.muteBtn.textContent = muted? 'Unmute':'Mute'; });
-    ui.holdBtn.addEventListener('click', async ()=>{ if(!call) return; held = !held; try{ await call.hold(held);}catch(e){} ui.holdBtn.textContent = held? 'Unhold':'Hold'; });
-    ui.keypadBtn.addEventListener('click', ()=> ui.dtmfPad.classList.toggle('hidden'));
-    document.querySelectorAll('[data-dtmf]').forEach(el=> el.addEventListener('click', ()=>{ if(call) try{ call.sendDigits(el.getAttribute('data-dtmf')); }catch(e){} }));
-
-    // -------- HISTORY --------
-    ui.refreshHistory.addEventListener('click', loadHistory);
-    async function loadHistory(){
-      try{
-        const r = await fetch(BASE + '/calls'); const j = await r.json();
-        if(!Array.isArray(j)) return; ui.history.innerHTML = '';
-        j.forEach(row=>{
-          const el = document.createElement('div'); el.className='item';
-          el.innerHTML = `<div><div><strong>${row.call_type||'-'}</strong></div><small>${row.created_at||''}</small></div>
-                           <div><div>From: ${row.from_number||'-'} → To: ${row.to_number||'-'}</div><small>${row.status||''}</small></div>
-                           <div class="right"><div>${row.duration||0}s</div><small>${row.user_email||''}</small></div>`;
-          ui.history.appendChild(el);
-        });
-      }catch(e){ showErr('History error: ' + e.message); log('History error:', e.message); }
-    }
-
-    async function saveCallLog({duration=0,to='',status='Completed'}){
-      try{
-        const payload = { created_at: new Date().toISOString().replace('T',' ').slice(0,16), from: me.assigned_number||'', to, duration, user_email: me.email, call_type:'outgoing', status };
-        await fetch(BASE + '/save-call', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      }catch(e){ log('Save log error:', e.message); }
-    }
   </script>
 </body>
 </html>
