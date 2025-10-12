@@ -148,44 +148,65 @@ def get_calls():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
+        # identify the signed-in user from the Bearer token
+        auth_email = auth_from_token(request.headers.get("Authorization", ""))
+
+        if not auth_email:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        # allow admins to see all, others only their own
+        viewer = find_user_by_email(auth_email)
+        is_admin = False
+        if viewer and str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
+            is_admin = True
+
         rows = calls_ws.get_all_records()
         calls = []
         for r in rows:
-            calls.append({
+            row = {
                 "created_at": r.get("Timestamp") or r.get("timestamp") or None,
                 "from_number": r.get("From") or r.get("From Number") or r.get("from"),
                 "to_number": r.get("To") or r.get("To Number") or r.get("to"),
                 "duration": r.get("Duration") or r.get("duration") or 0,
                 "user_email": r.get("User Email") or r.get("User") or r.get("user_email"),
                 "call_type": r.get("Call Type") or r.get("call_type"),
-                "status": r.get("Notes") or r.get("Notes / Status") or r.get("status")
-            })
+                "status": r.get("Notes") or r.get("Notes / Status") or r.get("status"),
+            }
+            if is_admin or (str(row.get("user_email", "")).strip().lower() == auth_email.strip().lower()):
+                calls.append(row)
+
         calls = list(reversed(calls))
         return jsonify(calls)
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
 
+
 @app.route("/save-call", methods=["POST", "OPTIONS"])
 def save_call():
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
+        # bind the saved row to the authenticated email
+        auth_email = auth_from_token(request.headers.get("Authorization", ""))
+
         data = request.get_json(force=True)
         timestamp = data.get("created_at") or data.get("timestamp") or time.strftime("%Y-%m-%d %H:%M:%S")
         from_num = data.get("from") or data.get("from_number") or ""
         to_num = data.get("to") or data.get("to_number") or ""
         duration = int(data.get("duration", 0))
-        user_email = data.get("user_email") or data.get("user_id") or data.get("user") or ""
         call_type = data.get("call_type") or ""
         notes = data.get("status") or data.get("notes") or ""
 
-        # Append row: Timestamp, From, To, Duration, User Email, Call Type, Notes
+        # always prefer the authenticated user; fall back to provided only if no token (e.g., legacy)
+        user_email = auth_email or data.get("user_email") or data.get("user_id") or data.get("user") or ""
+
         calls_ws.append_row([timestamp, from_num, to_num, duration, user_email, call_type, notes])
         return jsonify({"success": True})
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
+
 
 @app.route("/twilio-token", methods=["POST", "OPTIONS"])
 def twilio_token():
