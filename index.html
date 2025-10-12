@@ -9,7 +9,7 @@
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--ink); }
     .app { max-width: 1200px; margin: 24px auto; padding: 16px; }
-    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:8px; flex-wrap:wrap; }
     h1 { font-size: 20px; margin:0; }
     .grid { display:grid; grid-template-columns: 300px 1fr 320px; gap:12px; }
     .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
@@ -42,10 +42,10 @@
   <div class="app">
     <header>
       <h1>CallBridge – Minimal Web Dialer</h1>
-      <div class="row" style="gap:6px; min-width:320px;">
+      <div class="row" style="gap:6px; min-width:320px; flex:1;">
         <input id="email" placeholder="Email (as in Users sheet)" />
         <input id="password" type="password" placeholder="Password" />
-        <button id="loginBtn" class="btn-primary" style="min-width:100px;">Log in</button>
+        <button id="loginBtn" class="btn-primary" style="min-width:120px;">Log in</button>
       </div>
     </header>
 
@@ -145,57 +145,46 @@
     </div>
   </div>
 
-  <script type="module">
-    // ====== BEGINNER-FRIENDLY, SINGLE-FILE FRONTEND ======
-    // Works with your existing backend endpoints: /login, /twilio-token, /voice, /calls, /save-call
-    // Uses Twilio Voice SDK v2 via ESM CDN. No build tools needed.
+  <!-- Use the official UMD build so no ESM/import issues. This creates a global `Twilio` with `Device`. -->
+  <script src="https://unpkg.com/@twilio/voice-sdk@2/dist/twilio-voice.min.js"></script>
+  <script>
+    // ====== SINGLE-FILE FRONTEND (NO BUILD TOOLS) ======
+    // IMPORTANT: Serve over https or http://localhost (not file://). Browsers block mic and module imports on file://.
 
-    // Set this to your backend base URL if hosting frontend on another domain.
-    const BASE = location.origin; // e.g. 'https://callbridge-backend.onrender.com'
+    // 1) Set your backend URL. If hosting this on the SAME origin as backend, keep as location.origin.
+    //    If hosting elsewhere (e.g., Netlify), set: const BASE = 'https://YOUR-BACKEND.onrender.com';
+    const BASE = location.origin; // <-- change if needed
 
-    // Import Twilio Voice SDK v2
-    import { Device } from 'https://esm.sh/@twilio/voice-sdk@2';
+    // 2) Twilio SDK v2 is available as global `Twilio`. Grab Device from it.
+    const { Device } = Twilio;
 
     // --- UI helpers
     const $ = (id) => document.getElementById(id);
     const ui = {
-      // header auth
       email: $('email'), password: $('password'), loginBtn: $('loginBtn'),
-      // top badges
       devStatus: $('devStatus'), assigned: $('assigned'),
-      // left pane
       dialerPane: $('dialerPane'), activePane: $('activePane'), to: $('to'), callBtn: $('callBtn'),
       muteBtn: $('muteBtn'), holdBtn: $('holdBtn'), keypadBtn: $('keypadBtn'), dtmfPad: $('dtmfPad'),
       hangupBtn: $('hangupBtn'), callStatus: $('callStatus'), peer: $('peer'), remoteAudio: $('remoteAudio'),
-      log: $('log'),
-      // center history
-      history: $('history'), refreshHistory: $('refreshHistory'),
-      // right profile
+      log: $('log'), history: $('history'), refreshHistory: $('refreshHistory'),
       p_email: $('p_email'), p_name: $('p_name'), p_number: $('p_number'), p_expiry: $('p_expiry'), p_role: $('p_role'),
     };
 
-    let authToken = null;     // backend login token (from /login)
-    let me = null;            // user object from /login
-    let device = null;        // Twilio Device
-    let call = null;          // active Twilio Call
-    let callStart = 0;        // ms
-    let muted = false;
-    let held = false;
+    let authToken = null; let me = null; let device = null; let call = null; let callStart = 0; let muted=false; let held=false;
 
-    function log(...a){ console.log(...a); ui.log.textContent += a.join(' ') + '
+    function log(){ const msg = Array.from(arguments).join(' '); console.log('[UI]', msg); ui.log.textContent += msg + '
 '; ui.log.scrollTop = ui.log.scrollHeight; }
-    const showDialer = () => { ui.dialerPane.classList.remove('hidden'); ui.activePane.classList.add('hidden'); };
-    const showActive = () => { ui.dialerPane.classList.add('hidden'); ui.activePane.classList.remove('hidden'); };
+    const showDialer = ()=>{ ui.dialerPane.classList.remove('hidden'); ui.activePane.classList.add('hidden'); };
+    const showActive = ()=>{ ui.dialerPane.classList.add('hidden'); ui.activePane.classList.remove('hidden'); };
 
-    // --- LOGIN ---
-    ui.loginBtn.onclick = async () => {
-      try {
+    // LOGIN
+    $('loginBtn').addEventListener('click', async () => {
+      try{
         const body = { email: ui.email.value.trim(), password: ui.password.value };
-        const r = await fetch(`${BASE}/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const r = await fetch(BASE + '/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
         const j = await r.json(); if(!r.ok) throw new Error(j.error || 'Login failed');
         authToken = j.token; me = j.user; log('Logged in:', me.email);
         ui.assigned.textContent = me.assigned_number || '—';
-        // update profile panel
         ui.p_email.textContent = me.email || '—';
         ui.p_name.textContent = me.display_name || '—';
         ui.p_number.textContent = me.assigned_number || '—';
@@ -203,67 +192,53 @@
         ui.p_role.textContent = me.role || '—';
         await registerDevice();
         await loadHistory();
-      } catch(e){ alert(e.message); }
-    };
+      }catch(e){ alert(e.message); log('Login error:', e.message); }
+    });
 
-    // --- TWILIO DEVICE (v2) ---
+    // DEVICE
     async function getVoiceToken(){
-      const r = await fetch(`${BASE}/twilio-token`, {
-        method:'POST', headers:{'Content-Type':'application/json', ...(authToken?{ 'Authorization':`Bearer ${authToken}` }:{})},
-        body: JSON.stringify({ user_id: me.email })
-      });
-      const j = await r.json(); if(!r.ok) throw new Error(j.error || 'Token error');
-      return j.token; // also returns callerId if you need it
+      const r = await fetch(BASE + '/twilio-token', { method:'POST', headers:{'Content-Type':'application/json', ...(authToken?{'Authorization':'Bearer ' + authToken}:{})}, body: JSON.stringify({ user_id: me.email }) });
+      const j = await r.json(); if(!r.ok) throw new Error(j.error || 'Token error'); return j.token;
     }
 
     async function registerDevice(){
       const token = await getVoiceToken();
-      if (device) { try{ await device.destroy(); }catch{} }
-      device = new Device(token, { logLevel:'error', codecPreferences:['opus','pcmu'] });
-
-      device.on('registered', () => { ui.devStatus.textContent = 'Registered'; log('Device registered'); });
-      device.on('error', (e) => { ui.devStatus.textContent = 'Error'; log('Device error:', e.message); });
-      device.on('incoming', (c) => handleIncoming(c));
-      device.on('tokenWillExpire', async () => { log('Refreshing token…'); const t = await getVoiceToken(); await device.updateToken(t); });
-
+      if (device) { try{ await device.destroy(); }catch(e){} }
+      device = new Device(token, { logLevel: 'error', codecPreferences: ['opus','pcmu'] });
+      device.on('registered', ()=>{ ui.devStatus.textContent = 'Registered'; log('Device registered'); });
+      device.on('error', (e)=>{ ui.devStatus.textContent = 'Error'; log('Device error:', e.message); alert('Device error: ' + e.message); });
+      device.on('incoming', (c)=> handleIncoming(c));
+      device.on('tokenWillExpire', async ()=>{ log('Refreshing token…'); const t = await getVoiceToken(); await device.updateToken(t); });
       await device.register();
     }
 
-    // --- OUTBOUND ---
-    document.querySelectorAll('[data-digit]').forEach(el=>{
-      el.addEventListener('click', ()=>{ ui.to.value += el.getAttribute('data-digit'); });
-    });
-
-    ui.callBtn.onclick = async () => {
+    // OUTBOUND
+    document.querySelectorAll('[data-digit]').forEach(el=> el.addEventListener('click', ()=>{ ui.to.value += el.getAttribute('data-digit'); }));
+    $('callBtn').addEventListener('click', async ()=>{
       try{
         const to = ui.to.value.trim(); if(!to.startsWith('+')) throw new Error('Use E.164 format, e.g. +14155550123');
         ui.peer.textContent = to; ui.callStatus.textContent = 'Dialing…'; showActive();
         call = await device.connect({ params: { To: to, user_id: me.email } });
         callStart = Date.now();
         hookCallEvents(call);
-      }catch(e){ showDialer(); alert(e.message); }
-    };
+      }catch(e){ showDialer(); alert(e.message); log('Call error:', e.message); }
+    });
 
-    // --- INBOUND ---
+    // INBOUND
     function handleIncoming(c){
-      // Simple incoming UI: auto-show active pane with Accept/Reject via confirm
-      const from = c.parameters?.From || 'Unknown';
-      if (confirm(`Incoming call from ${from}. Accept?`)) {
+      const from = (c.parameters && c.parameters.From) || 'Unknown';
+      if (confirm('Incoming call from ' + from + '. Accept?')) {
         c.accept();
         ui.peer.textContent = from; ui.callStatus.textContent = 'Connected'; showActive();
         call = c; callStart = Date.now(); hookCallEvents(call);
-      } else {
-        c.reject();
-      }
+      } else { c.reject(); }
     }
 
     function hookCallEvents(c){
-      // Attach audio to element
-      if (c.mediaStream) ui.remoteAudio.srcObject = c.mediaStream;
-
+      try{ if (c.mediaStream) ui.remoteAudio.srcObject = c.mediaStream; }catch(e){}
       c.on('accept', ()=>{ ui.callStatus.textContent = 'Connected'; });
       c.on('disconnect', ()=>{ ui.callStatus.textContent = 'Ended'; finalizeCall('Completed'); });
-      c.on('error', (e)=>{ log('Call error:', e.message); finalizeCall('Error'); });
+      c.on('error', (e)=>{ log('Call error event:', e.message); finalizeCall('Error'); });
     }
 
     function finalizeCall(status){
@@ -274,45 +249,24 @@
       showDialer(); loadHistory();
     }
 
-    // --- CONTROLS ---
-    ui.hangupBtn.onclick = ()=>{ if(call) call.disconnect(); };
+    // CONTROLS
+    $('hangupBtn').addEventListener('click', ()=>{ if(call) call.disconnect(); });
+    $('muteBtn').addEventListener('click', ()=>{ if(!call) return; muted = !muted; try{ call.mute(muted);}catch(e){} ui.muteBtn.textContent = muted? 'Unmute':'Mute'; });
+    $('holdBtn').addEventListener('click', async ()=>{ if(!call) return; held = !held; try{ await call.hold(held);}catch(e){} ui.holdBtn.textContent = held? 'Unhold':'Hold'; });
+    $('keypadBtn').addEventListener('click', ()=> ui.dtmfPad.classList.toggle('hidden'));
+    document.querySelectorAll('[data-dtmf]').forEach(el=> el.addEventListener('click', ()=>{ if(call) try{ call.sendDigits(el.getAttribute('data-dtmf')); }catch(e){} }));
 
-    ui.muteBtn.onclick = ()=>{
-      if(!call) return; muted = !muted; try{ call.mute(muted); }catch{} ui.muteBtn.textContent = muted ? 'Unmute' : 'Mute';
-    };
-
-    ui.holdBtn.onclick = async ()=>{
-      if(!call) return; held = !held; try{ await call.hold(held); }catch{} ui.holdBtn.textContent = held ? 'Unhold' : 'Hold';
-    };
-
-    ui.keypadBtn.onclick = ()=>{ ui.dtmfPad.classList.toggle('hidden'); };
-
-    document.querySelectorAll('[data-dtmf]').forEach(el=>{
-      el.addEventListener('click', ()=>{ if(call) try{ call.sendDigits(el.getAttribute('data-dtmf')); }catch{} });
-    });
-
-    // --- HISTORY ---
+    // HISTORY
+    $('refreshHistory').addEventListener('click', loadHistory);
     async function loadHistory(){
       try{
-        const r = await fetch(`${BASE}/calls`);
-        const j = await r.json();
-        if(!Array.isArray(j)) return;
-        ui.history.innerHTML = '';
+        const r = await fetch(BASE + '/calls'); const j = await r.json();
+        if(!Array.isArray(j)) return; ui.history.innerHTML = '';
         j.forEach(row=>{
           const el = document.createElement('div'); el.className='item';
-          el.innerHTML = `
-            <div>
-              <div><strong>${row.call_type||'-'}</strong></div>
-              <small>${row.created_at||''}</small>
-            </div>
-            <div>
-              <div>From: ${row.from_number||'-'} → To: ${row.to_number||'-'}</div>
-              <small>${row.status||''}</small>
-            </div>
-            <div class="right">
-              <div>${row.duration||0}s</div>
-              <small>${row.user_email||''}</small>
-            </div>`;
+          el.innerHTML = `<div><div><strong>${row.call_type||'-'}</strong></div><small>${row.created_at||''}</small></div>
+                           <div><div>From: ${row.from_number||'-'} → To: ${row.to_number||'-'}</div><small>${row.status||''}</small></div>
+                           <div class="right"><div>${row.duration||0}s</div><small>${row.user_email||''}</small></div>`;
           ui.history.appendChild(el);
         });
       }catch(e){ log('History error:', e.message); }
@@ -320,17 +274,10 @@
 
     async function saveCallLog({duration=0,to='',status='Completed'}){
       try{
-        const payload = {
-          created_at: new Date().toISOString().replace('T',' ').slice(0,16),
-          from: me.assigned_number || '',
-          to, duration, user_email: me.email, call_type:'outgoing', status
-        };
-        await fetch(`${BASE}/save-call`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      }catch(e){ log('Failed to save call log:', e.message); }
+        const payload = { created_at: new Date().toISOString().replace('T',' ').slice(0,16), from: me.assigned_number||'', to, duration, user_email: me.email, call_type:'outgoing', status };
+        await fetch(BASE + '/save-call', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      }catch(e){ log('Save log error:', e.message); }
     }
-
-    // Optional: auto-fill for fast testing (remove in prod)
-    // ui.email.value = 'callbridge.2025@gmail.com'; ui.password.value = 'Daniel212';
   </script>
 </body>
 </html>
