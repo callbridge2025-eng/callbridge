@@ -80,7 +80,7 @@
 
     <!-- Dialpad -->
     <div id="dialpadArea" style="display:flex;flex-direction:column;align-items:center;margin-top:6px">
-      <input id="dialInput" placeholder="+1..." />
+      <input id="dialInput" type="tel" inputmode="tel" pattern="^\+?\d[\d\s\-()]*$" placeholder="+1..." />
       <div style="margin-top:12px">
         <div class="key-row">
           <button class="key" data-key="1">1</button>
