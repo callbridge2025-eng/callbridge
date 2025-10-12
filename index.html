@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CallBridge – Minimal 3‑Pane Web Dialer</title>
+  <style>
+    :root { --bg:#0b1020; --card:#0f1733; --ink:#e8ecff; --muted:#9aa8df; --line:#1b2450; --accent:#2f49ff; --accent-2:#3a54ff; --border:#243064; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--ink); }
+    .app { max-width: 1200px; margin: 24px auto; padding: 16px; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    h1 { font-size: 20px; margin:0; }
+    .grid { display:grid; grid-template-columns: 300px 1fr 320px; gap:12px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
+    .row { display:flex; gap:10px; align-items:center; }
+    .col { display:flex; flex-direction:column; gap:10px; }
+    input, button { width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:#0b132b; color:var(--ink); }
+    input::placeholder { color:#8190c8; }
+    button { cursor:pointer; font-weight:600; }
+    .btn-primary { background:var(--accent); border-color:var(--accent-2); }
+    .btn-ghost { background:transparent; }
+    .btn-danger { background:#df2a43; border-color:#e24156; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:#162259; border:1px solid var(--border); font-size:12px; color:var(--muted); }
+    .muted { color:var(--muted); font-size:14px; }
+    .divider { height:1px; background:var(--line); margin:8px 0; }
+    .section-title { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+    .pad { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+    .pad button { font-size:18px; padding:14px; }
+    .hidden { display:none !important; }
+    .list { display:flex; flex-direction:column; gap:8px; max-height:480px; overflow:auto; }
+    .item { display:grid; grid-template-columns: 110px 1fr 70px; gap:8px; padding:10px; border:1px solid var(--border); border-radius:10px; background:#0b132b; }
+    .item small { color:var(--muted); }
+    .kprow { display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; }
+    .kbd { text-align:center; padding:10px 0; border:1px dashed var(--border); border-radius:8px; background:#0b132b; }
+    .right { text-align:right; }
+    audio { width:100%; margin-top:8px; }
+    @media (max-width: 980px){ .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>CallBridge – Minimal Web Dialer</h1>
+      <div class="row" style="gap:6px; min-width:320px;">
+        <input id="email" placeholder="Email (as in Users sheet)" />
+        <input id="password" type="password" placeholder="Password" />
+        <button id="loginBtn" class="btn-primary" style="min-width:100px;">Log in</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- LEFT: DIALER / CALL CONTROLS -->
+      <div class="card col">
+        <div class="row" style="justify-content:space-between;">
+          <div class="muted">Device: <span id="devStatus" class="pill">Not registered</span></div>
+          <div class="muted">Assigned: <span id="assigned" class="pill">—</span></div>
+        </div>
+        <div class="divider"></div>
+
+        <!-- Idle / Dialing UI -->
+        <div id="dialerPane" class="col">
+          <input id="to" placeholder="Enter E.164 number e.g. +14155550123" />
+          <div class="pad">
+            <button data-digit="1">1</button>
+            <button data-digit="2">2</button>
+            <button data-digit="3">3</button>
+            <button data-digit="4">4</button>
+            <button data-digit="5">5</button>
+            <button data-digit="6">6</button>
+            <button data-digit="7">7</button>
+            <button data-digit="8">8</button>
+            <button data-digit="9">9</button>
+            <button data-digit="*">*</button>
+            <button data-digit="0">0</button>
+            <button data-digit="#">#</button>
+          </div>
+          <button id="callBtn" class="btn-primary">Call</button>
+        </div>
+
+        <!-- Active call UI -->
+        <div id="activePane" class="col hidden">
+          <div class="row" style="justify-content:space-between;">
+            <div>
+              <div class="muted">Calling</div>
+              <div id="peer" style="font-weight:700;">—</div>
+            </div>
+            <div class="right">
+              <div class="muted">Status</div>
+              <div id="callStatus" class="pill">Connecting…</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+
+          <div class="row">
+            <button id="muteBtn" class="btn-ghost">Mute</button>
+            <button id="holdBtn" class="btn-ghost">Hold</button>
+            <button id="keypadBtn" class="btn-ghost">Keypad</button>
+          </div>
+          <div id="dtmfPad" class="kprow hidden">
+            <div class="kbd" data-dtmf="1">1</div>
+            <div class="kbd" data-dtmf="2">2</div>
+            <div class="kbd" data-dtmf="3">3</div>
+            <div class="kbd" data-dtmf="4">4</div>
+            <div class="kbd" data-dtmf="5">5</div>
+            <div class="kbd" data-dtmf="6">6</div>
+            <div class="kbd" data-dtmf="7">7</div>
+            <div class="kbd" data-dtmf="8">8</div>
+            <div class="kbd" data-dtmf="9">9</div>
+            <div class="kbd" data-dtmf="*">*</div>
+            <div class="kbd" data-dtmf="0">0</div>
+            <div class="kbd" data-dtmf="#">#</div>
+          </div>
+
+          <button id="hangupBtn" class="btn-danger">Hang up</button>
+          <audio id="remoteAudio" autoplay></audio>
+        </div>
+
+        <div class="divider"></div>
+        <div class="muted">Logs</div>
+        <pre id="log" style="white-space:pre-wrap; font-size:12px; line-height:1.3; margin:6px 0 0; color:#b9c6ff; max-height:160px; overflow:auto;"></pre>
+      </div>
+
+      <!-- CENTER: HISTORY -->
+      <div class="card col">
+        <div class="row" style="justify-content:space-between;">
+          <div class="section-title">Call History</div>
+          <button id="refreshHistory" class="btn-ghost" style="max-width:140px;">Refresh</button>
+        </div>
+        <div id="history" class="list"></div>
+      </div>
+
+      <!-- RIGHT: PROFILE -->
+      <div class="card col">
+        <div class="section-title">Profile</div>
+        <div class="divider"></div>
+        <div class="col">
+          <div><span class="muted">Email</span><div id="p_email" style="font-weight:700;">—</div></div>
+          <div><span class="muted">Display Name</span><div id="p_name">—</div></div>
+          <div><span class="muted">Assigned Number</span><div id="p_number">—</div></div>
+          <div><span class="muted">Expiry Date</span><div id="p_expiry">—</div></div>
+          <div><span class="muted">Role</span><div id="p_role">—</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // ====== BEGINNER-FRIENDLY, SINGLE-FILE FRONTEND ======
+    // Works with your existing backend endpoints: /login, /twilio-token, /voice, /calls, /save-call
+    // Uses Twilio Voice SDK v2 via ESM CDN. No build tools needed.
+
+    // Set this to your backend base URL if hosting frontend on another domain.
+    const BASE = location.origin; // e.g. 'https://callbridge-backend.onrender.com'
+
+    // Import Twilio Voice SDK v2
+    import { Device } from 'https://esm.sh/@twilio/voice-sdk@2';
+
+    // --- UI helpers
+    const $ = (id) => document.getElementById(id);
+    const ui = {
+      // header auth
+      email: $('email'), password: $('password'), loginBtn: $('loginBtn'),
+      // top badges
+      devStatus: $('devStatus'), assigned: $('assigned'),
+      // left pane
+      dialerPane: $('dialerPane'), activePane: $('activePane'), to: $('to'), callBtn: $('callBtn'),
+      muteBtn: $('muteBtn'), holdBtn: $('holdBtn'), keypadBtn: $('keypadBtn'), dtmfPad: $('dtmfPad'),
+      hangupBtn: $('hangupBtn'), callStatus: $('callStatus'), peer: $('peer'), remoteAudio: $('remoteAudio'),
+      log: $('log'),
+      // center history
+      history: $('history'), refreshHistory: $('refreshHistory'),
+      // right profile
+      p_email: $('p_email'), p_name: $('p_name'), p_number: $('p_number'), p_expiry: $('p_expiry'), p_role: $('p_role'),
+    };
+
+    let authToken = null;     // backend login token (from /login)
+    let me = null;            // user object from /login
+    let device = null;        // Twilio Device
+    let call = null;          // active Twilio Call
+    let callStart = 0;        // ms
+    let muted = false;
+    let held = false;
+
+    function log(...a){ console.log(...a); ui.log.textContent += a.join(' ') + '
+'; ui.log.scrollTop = ui.log.scrollHeight; }
+    const showDialer = () => { ui.dialerPane.classList.remove('hidden'); ui.activePane.classList.add('hidden'); };
+    const showActive = () => { ui.dialerPane.classList.add('hidden'); ui.activePane.classList.remove('hidden'); };
+
+    // --- LOGIN ---
+    ui.loginBtn.onclick = async () => {
+      try {
+        const body = { email: ui.email.value.trim(), password: ui.password.value };
+        const r = await fetch(`${BASE}/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const j = await r.json(); if(!r.ok) throw new Error(j.error || 'Login failed');
+        authToken = j.token; me = j.user; log('Logged in:', me.email);
+        ui.assigned.textContent = me.assigned_number || '—';
+        // update profile panel
+        ui.p_email.textContent = me.email || '—';
+        ui.p_name.textContent = me.display_name || '—';
+        ui.p_number.textContent = me.assigned_number || '—';
+        ui.p_expiry.textContent = me.expiry_date || '—';
+        ui.p_role.textContent = me.role || '—';
+        await registerDevice();
+        await loadHistory();
+      } catch(e){ alert(e.message); }
+    };
+
+    // --- TWILIO DEVICE (v2) ---
+    async function getVoiceToken(){
+      const r = await fetch(`${BASE}/twilio-token`, {
+        method:'POST', headers:{'Content-Type':'application/json', ...(authToken?{ 'Authorization':`Bearer ${authToken}` }:{})},
+        body: JSON.stringify({ user_id: me.email })
+      });
+      const j = await r.json(); if(!r.ok) throw new Error(j.error || 'Token error');
+      return j.token; // also returns callerId if you need it
+    }
+
+    async function registerDevice(){
+      const token = await getVoiceToken();
+      if (device) { try{ await device.destroy(); }catch{} }
+      device = new Device(token, { logLevel:'error', codecPreferences:['opus','pcmu'] });
+
+      device.on('registered', () => { ui.devStatus.textContent = 'Registered'; log('Device registered'); });
+      device.on('error', (e) => { ui.devStatus.textContent = 'Error'; log('Device error:', e.message); });
+      device.on('incoming', (c) => handleIncoming(c));
+      device.on('tokenWillExpire', async () => { log('Refreshing token…'); const t = await getVoiceToken(); await device.updateToken(t); });
+
+      await device.register();
+    }
+
+    // --- OUTBOUND ---
+    document.querySelectorAll('[data-digit]').forEach(el=>{
+      el.addEventListener('click', ()=>{ ui.to.value += el.getAttribute('data-digit'); });
+    });
+
+    ui.callBtn.onclick = async () => {
+      try{
+        const to = ui.to.value.trim(); if(!to.startsWith('+')) throw new Error('Use E.164 format, e.g. +14155550123');
+        ui.peer.textContent = to; ui.callStatus.textContent = 'Dialing…'; showActive();
+        call = await device.connect({ params: { To: to, user_id: me.email } });
+        callStart = Date.now();
+        hookCallEvents(call);
+      }catch(e){ showDialer(); alert(e.message); }
+    };
+
+    // --- INBOUND ---
+    function handleIncoming(c){
+      // Simple incoming UI: auto-show active pane with Accept/Reject via confirm
+      const from = c.parameters?.From || 'Unknown';
+      if (confirm(`Incoming call from ${from}. Accept?`)) {
+        c.accept();
+        ui.peer.textContent = from; ui.callStatus.textContent = 'Connected'; showActive();
+        call = c; callStart = Date.now(); hookCallEvents(call);
+      } else {
+        c.reject();
+      }
+    }
+
+    function hookCallEvents(c){
+      // Attach audio to element
+      if (c.mediaStream) ui.remoteAudio.srcObject = c.mediaStream;
+
+      c.on('accept', ()=>{ ui.callStatus.textContent = 'Connected'; });
+      c.on('disconnect', ()=>{ ui.callStatus.textContent = 'Ended'; finalizeCall('Completed'); });
+      c.on('error', (e)=>{ log('Call error:', e.message); finalizeCall('Error'); });
+    }
+
+    function finalizeCall(status){
+      const secs = callStart? Math.round((Date.now()-callStart)/1000) : 0;
+      const to = ui.peer.textContent || ui.to.value.trim();
+      saveCallLog({ duration: secs, to, status });
+      call = null; callStart = 0; muted=false; held=false; ui.muteBtn.textContent='Mute'; ui.holdBtn.textContent='Hold'; ui.dtmfPad.classList.add('hidden');
+      showDialer(); loadHistory();
+    }
+
+    // --- CONTROLS ---
+    ui.hangupBtn.onclick = ()=>{ if(call) call.disconnect(); };
+
+    ui.muteBtn.onclick = ()=>{
+      if(!call) return; muted = !muted; try{ call.mute(muted); }catch{} ui.muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+    };
+
+    ui.holdBtn.onclick = async ()=>{
+      if(!call) return; held = !held; try{ await call.hold(held); }catch{} ui.holdBtn.textContent = held ? 'Unhold' : 'Hold';
+    };
+
+    ui.keypadBtn.onclick = ()=>{ ui.dtmfPad.classList.toggle('hidden'); };
+
+    document.querySelectorAll('[data-dtmf]').forEach(el=>{
+      el.addEventListener('click', ()=>{ if(call) try{ call.sendDigits(el.getAttribute('data-dtmf')); }catch{} });
+    });
+
+    // --- HISTORY ---
+    async function loadHistory(){
+      try{
+        const r = await fetch(`${BASE}/calls`);
+        const j = await r.json();
+        if(!Array.isArray(j)) return;
+        ui.history.innerHTML = '';
+        j.forEach(row=>{
+          const el = document.createElement('div'); el.className='item';
+          el.innerHTML = `
+            <div>
+              <div><strong>${row.call_type||'-'}</strong></div>
+              <small>${row.created_at||''}</small>
+            </div>
+            <div>
+              <div>From: ${row.from_number||'-'} → To: ${row.to_number||'-'}</div>
+              <small>${row.status||''}</small>
+            </div>
+            <div class="right">
+              <div>${row.duration||0}s</div>
+              <small>${row.user_email||''}</small>
+            </div>`;
+          ui.history.appendChild(el);
+        });
+      }catch(e){ log('History error:', e.message); }
+    }
+
+    async function saveCallLog({duration=0,to='',status='Completed'}){
+      try{
+        const payload = {
+          created_at: new Date().toISOString().replace('T',' ').slice(0,16),
+          from: me.assigned_number || '',
+          to, duration, user_email: me.email, call_type:'outgoing', status
+        };
+        await fetch(`${BASE}/save-call`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      }catch(e){ log('Failed to save call log:', e.message); }
+    }
+
+    // Optional: auto-fill for fast testing (remove in prod)
+    // ui.email.value = 'callbridge.2025@gmail.com'; ui.password.value = 'Daniel212';
+  </script>
+</body>
+</html>
