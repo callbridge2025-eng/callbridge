@@ -183,15 +183,31 @@ const API_BASE = "https://callbridge.onrender.com";
 const $ = id => document.getElementById(id);
 const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
   /* phone display formatter: ensures leading + when appropriate */
+/* phone display formatter:
+   - US (+1XXXXXXXXXX) -> (XXX) XXX-XXXX
+   - Plain 10 digits   -> assume US, show pretty
+   - Other lengths     -> ensure leading + and show as-is
+*/
 function showE164(n){
   if (n == null) return '—';
-  const s = String(n).trim();
-  if (s === '') return '—';
-  if (s.startsWith('+')) return s;              // already E.164
-  if (/^\d{10}$/.test(s)) return `+1${s}`;      // plain US 10-digit -> +1…
-  if (/^\d{11,15}$/.test(s)) return `+${s}`;    // long digits -> prepend +
-  return s;                                     // otherwise, show as-is
+  const raw = String(n).trim();
+  if (raw === '') return '—';
+
+  // Normalize to something with + for display
+  let e164 = raw;
+  if (!raw.startsWith('+')) {
+    if (/^\d{10}$/.test(raw)) e164 = `+1${raw}`;        // US 10-digit
+    else if (/^\d{11,15}$/.test(raw)) e164 = `+${raw}`; // long digits
+  }
+
+  // Pretty print US numbers
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  if (m) return `(${m[1]}) ${m[2]}-${m[3]}`;
+
+  // Non-US: just show normalized E.164
+  return e164;
 }
+
 
 /* app state */
 let device = null;
