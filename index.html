@@ -265,7 +265,9 @@ async function performLogout(){
 
 /* ---------- call-save ---------- */
 async function remoteSaveCall(payload){
-  const ep = (API_BASE || "") + "/save-call";
+ const emailQS = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+const ep = `${API_BASE}/save-call${emailQS}`;
+
   try{
     const res = await fetch(ep, {
       method: "POST",
