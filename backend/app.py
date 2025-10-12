@@ -234,22 +234,22 @@ def save_call():
         notes = data.get("status") or data.get("notes") or ""
 
         # always bind to the resolved email if present; otherwise use provided
-        # always bind to the resolved email if present; otherwise use provided
-user_email = auth_email or data.get("user_email") or data.get("user_id") or data.get("user") or ""
+        user_email = auth_email or data.get("user_email") or data.get("user_id") or data.get("user") or ""
 
-# normalize phone numbers to E.164 and save RAW (keeps '+')
-from_num_e164 = to_e164(from_num, default_region='US')
-to_num_e164   = to_e164(to_num,   default_region='US')
+        # normalize phone numbers and save RAW to keep '+'
+        from_num_e164 = to_e164(from_num, default_region='US')
+        to_num_e164   = to_e164(to_num,   default_region='US')
 
-append_row_raw(
-    calls_ws,
-    [timestamp, from_num_e164, to_num_e164, duration, user_email, call_type, notes]
-)
-return jsonify({"success": True})
+        append_row_raw(
+            calls_ws,
+            [timestamp, from_num_e164, to_num_e164, duration, user_email, call_type, notes]
+        )
 
+        return jsonify({"success": True})
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 
