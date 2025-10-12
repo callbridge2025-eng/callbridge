@@ -3,36 +3,41 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CallBridge – Minimal 3‑Pane Web Dialer</title>
+  <title>CallBridge – Web Dialer</title>
   <style>
-    :root { --bg:#0b1020; --card:#0f1733; --ink:#e8ecff; --muted:#9aa8df; --line:#1b2450; --accent:#2f49ff; --accent-2:#3a54ff; --border:#243064; }
+    :root {
+      --bg:#f7f9fc; --card:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
+      --accent:#2563eb; --accent-2:#1d4ed8; --border:#d1d5db; --danger:#dc2626; --danger-2:#b91c1c;
+    }
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--ink); }
     .app { max-width: 1200px; margin: 24px auto; padding: 16px; }
     header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:8px; flex-wrap:wrap; }
     h1 { font-size: 20px; margin:0; }
     .grid { display:grid; grid-template-columns: 300px 1fr 320px; gap:12px; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; box-shadow: 0 2px 14px rgba(17,24,39,.05); }
     .row { display:flex; gap:10px; align-items:center; }
     .col { display:flex; flex-direction:column; gap:10px; }
-    input, button { width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:#0b132b; color:var(--ink); }
-    input::placeholder { color:#8190c8; }
+    input, button {
+      width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:#fff; color:var(--ink);
+    }
+    input::placeholder { color:#9ca3af; }
     button { cursor:pointer; font-weight:600; }
-    .btn-primary { background:var(--accent); border-color:var(--accent-2); }
-    .btn-ghost { background:transparent; }
-    .btn-danger { background:#df2a43; border-color:#e24156; }
-    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:#162259; border:1px solid var(--border); font-size:12px; color:var(--muted); }
+    .btn-primary { background:var(--accent); border-color:var(--accent-2); color:#fff; }
+    .btn-ghost { background:#fff; }
+    .btn-danger { background:var(--danger); border-color:var(--danger-2); color:#fff; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:#eef2ff; border:1px solid var(--border); font-size:12px; color:#374151; }
     .muted { color:var(--muted); font-size:14px; }
     .divider { height:1px; background:var(--line); margin:8px 0; }
     .section-title { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
     .pad { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
-    .pad button { font-size:18px; padding:14px; }
+    .pad button { font-size:18px; padding:14px; background:#f3f4f6; }
     .hidden { display:none !important; }
     .list { display:flex; flex-direction:column; gap:8px; max-height:480px; overflow:auto; }
-    .item { display:grid; grid-template-columns: 110px 1fr 70px; gap:8px; padding:10px; border:1px solid var(--border); border-radius:10px; background:#0b132b; }
+    .item { display:grid; grid-template-columns: 110px 1fr 70px; gap:8px; padding:10px; border:1px solid var(--border); border-radius:10px; background:#fafafa; }
     .item small { color:var(--muted); }
     .kprow { display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; }
-    .kbd { text-align:center; padding:10px 0; border:1px dashed var(--border); border-radius:8px; background:#0b132b; }
+    .kbd { text-align:center; padding:10px 0; border:1px dashed var(--border); border-radius:8px; background:#f9fafb; }
     .right { text-align:right; }
     audio { width:100%; margin-top:8px; }
     @media (max-width: 980px){ .grid { grid-template-columns: 1fr; } }
@@ -41,10 +46,10 @@
 <body>
   <div class="app">
     <header>
-      <h1>CallBridge – Minimal Web Dialer</h1>
+      <h1>CallBridge – Web Dialer</h1>
       <div class="row" style="gap:6px; min-width:320px; flex:1;">
-        <input id="email" placeholder="Email (as in Users sheet)" />
-        <input id="password" type="password" placeholder="Password" />
+        <input id="email" placeholder="Email (as in Users sheet)" autocomplete="username" />
+        <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
         <button id="loginBtn" class="btn-primary" style="min-width:120px;">Log in</button>
       </div>
     </header>
@@ -82,7 +87,7 @@
         <div id="activePane" class="col hidden">
           <div class="row" style="justify-content:space-between;">
             <div>
-              <div class="muted">Calling</div>
+              <div class="muted">Peer</div>
               <div id="peer" style="font-weight:700;">—</div>
             </div>
             <div class="right">
@@ -118,7 +123,7 @@
 
         <div class="divider"></div>
         <div class="muted">Logs</div>
-        <pre id="log" style="white-space:pre-wrap; font-size:12px; line-height:1.3; margin:6px 0 0; color:#b9c6ff; max-height:160px; overflow:auto;"></pre>
+        <pre id="log" style="white-space:pre-wrap; font-size:12px; line-height:1.3; margin:6px 0 0; color:#374151; max-height:180px; overflow:auto;"></pre>
       </div>
 
       <!-- CENTER: HISTORY -->
@@ -145,17 +150,15 @@
     </div>
   </div>
 
-  <!-- Use the official UMD build so no ESM/import issues. This creates a global `Twilio` with `Device`. -->
+  <!-- Twilio Voice SDK v2 UMD -->
   <script src="https://unpkg.com/@twilio/voice-sdk@2/dist/twilio-voice.min.js"></script>
   <script>
-    // ====== SINGLE-FILE FRONTEND (NO BUILD TOOLS) ======
-    // IMPORTANT: Serve over https or http://localhost (not file://). Browsers block mic and module imports on file://.
+    // Serve over https:// or http://localhost (not file://).
 
-    // 1) Set your backend URL. If hosting this on the SAME origin as backend, keep as location.origin.
-    //    If hosting elsewhere (e.g., Netlify), set: const BASE = 'https://YOUR-BACKEND.onrender.com';
-    const BASE = location.origin; // <-- change if needed
+    // BACKEND URL (your Render app)
+    const BASE = 'https://callbridge-backend.onrender.com';
 
-    // 2) Twilio SDK v2 is available as global `Twilio`. Grab Device from it.
+    // Twilio Device from UMD bundle
     const { Device } = Twilio;
 
     // --- UI helpers
@@ -172,8 +175,7 @@
 
     let authToken = null; let me = null; let device = null; let call = null; let callStart = 0; let muted=false; let held=false;
 
-    function log(){ const msg = Array.from(arguments).join(' '); console.log('[UI]', msg); ui.log.textContent += msg + '
-'; ui.log.scrollTop = ui.log.scrollHeight; }
+    function log(){ const msg = Array.from(arguments).join(' '); console.log('[UI]', msg); ui.log.textContent += msg + '\n'; ui.log.scrollTop = ui.log.scrollHeight; }
     const showDialer = ()=>{ ui.dialerPane.classList.remove('hidden'); ui.activePane.classList.add('hidden'); };
     const showActive = ()=>{ ui.dialerPane.classList.add('hidden'); ui.activePane.classList.remove('hidden'); };
 
@@ -197,7 +199,11 @@
 
     // DEVICE
     async function getVoiceToken(){
-      const r = await fetch(BASE + '/twilio-token', { method:'POST', headers:{'Content-Type':'application/json', ...(authToken?{'Authorization':'Bearer ' + authToken}:{})}, body: JSON.stringify({ user_id: me.email }) });
+      const r = await fetch(BASE + '/twilio-token', {
+        method:'POST',
+        headers:{'Content-Type':'application/json', ...(authToken?{'Authorization':'Bearer ' + authToken}:{})},
+        body: JSON.stringify({ user_id: me.email })
+      });
       const j = await r.json(); if(!r.ok) throw new Error(j.error || 'Token error'); return j.token;
     }
 
