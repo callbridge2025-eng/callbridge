@@ -107,6 +107,14 @@ def find_user_by_assigned_number(num):
         traceback.print_exc()
     return None
 
+def _https_url(url, req):
+    # Render/other proxies often set X-Forwarded-Proto=https for HTTPS requests
+    proto = req.headers.get("X-Forwarded-Proto", "https")
+    if url.startswith("http://") and proto == "https":
+        return "https://" + url[len("http://"):]
+    return url
+
+
 
 @app.after_request
 def after_request(response):
@@ -368,11 +376,14 @@ def voice():
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
             # Ring the Twilio <Client> (your JS SDK logged in as this email)
-            dial = Dial(timeout=25)
-            dial.client(
-                identity,
-                status_callback=f"{request.url_root.rstrip('/')}/client-status",
-                status_callback_event=["initiated", "ringing", "answered", "completed"]
+dial = Dial(timeout=25)
+dial.client(
+    identity,
+    status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
+    status_callback_event="initiated ringing answered completed"]
+)
+resp.append(dial)
+
             )
             resp.append(dial)
 
