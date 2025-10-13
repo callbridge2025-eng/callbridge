@@ -186,6 +186,9 @@ def append_row_raw(ws, row):
 def home():
     return jsonify({"message": "Backend is running!"})
 
+
+
+
 @app.route("/login", methods=["POST", "OPTIONS"])
 def login():
     if request.method == "OPTIONS":
@@ -195,6 +198,7 @@ def login():
         data = request.get_json(force=True)
         email = data.get("email")
         password = data.get("password")
+
         if not email or not password:
             return jsonify({"error": "email and password required"}), 400
 
@@ -207,7 +211,6 @@ def login():
                 token = secrets.token_urlsafe(32)
                 email_l = str(r.get("Email")).strip().lower()
 
-                # invalidate old token for this user
                 old_token = ACTIVE_TOKEN_FOR.get(email_l)
                 if old_token:
                     TOKENS.pop(old_token, None)
@@ -225,13 +228,10 @@ def login():
                 }
                 return jsonify({"token": token, "user": user})
 
-        # 👈 this line must be aligned with the `for` above, not inside it
         return jsonify({"error": "Invalid credentials"}), 401
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
 
 
 
