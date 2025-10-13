@@ -254,10 +254,9 @@ def get_calls():
                 "from_number": r.get("From") or r.get("From Number") or r.get("from"),
                 "to_number": r.get("To") or r.get("To Number") or r.get("to"),
                 "dur_val = _get_first_key(
-    r,
-    ["Duration", "duration", "Duration (s)", "duration_seconds", "Call Duration"]
-)
-,
+                               r,
+                       ["Duration", "duration", "Duration (s)", "duration_seconds", "Call Duration"]
+                       ),
                 "user_email": r.get("User Email") or r.get("User") or r.get("user_email"),
                 "call_type": r.get("Call Type") or r.get("call_type"),
                 "status": r.get("Notes") or r.get("Notes / Status") or r.get("status"),
