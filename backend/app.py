@@ -200,8 +200,35 @@ def login():
         rows = users_ws.get_all_records()
         for r in rows:
             if str(r.get("Email", "")).strip().lower() == str(email).strip().lower() and str(r.get("Password","")) == str(password):
+                # ✅ new login token handling
                 token = secrets.token_urlsafe(32)
-email_l = str(r.get("Email")).strip().lower()
+                email_l = str(r.get("Email")).strip().lower()
+
+                # Invalidate previous token for this user
+                old_token = ACTIVE_TOKEN_FOR.get(email_l)
+                if old_token:
+                    TOKENS.pop(old_token, None)
+
+                # Register new active token
+                ACTIVE_TOKEN_FOR[email_l] = token
+                TOKENS[token] = email_l
+
+                user = {
+                    "id": r.get("Email"),
+                    "email": r.get("Email"),
+                    "display_name": r.get("Display Name"),
+                    "assigned_number": r.get("Assigned Number"),
+                    "expiry_date": r.get("Expiry Date"),
+                    "role": r.get("Role"),
+                }
+                return jsonify({"token": token, "user": user})
+
+        # If we got here, no match found
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # Invalidate any previous token for this user
 old_token = ACTIVE_TOKEN_FOR.get(email_l)
