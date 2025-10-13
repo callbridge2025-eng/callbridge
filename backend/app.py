@@ -358,31 +358,30 @@ def voice():
             resp.append(dial)
 
         else:
-            # ===== INCOMING: PSTN -> client =====
-            # ===== INCOMING: PSTN -> client =====
-called_raw = request.values.get("Called") or request.values.get("To") or ""
-caller_raw = request.values.get("Caller") or request.values.get("From") or ""
-called_e164 = to_e164(called_raw, default_region='US')
-caller_e164 = to_e164(caller_raw, default_region='US')
+    # ===== INCOMING: PSTN -> client =====
+    called_raw = request.values.get("Called") or request.values.get("To") or ""
+    caller_raw = request.values.get("Caller") or request.values.get("From") or ""
+    called_e164 = to_e164(called_raw, default_region='US')
+    caller_e164 = to_e164(caller_raw, default_region='US')
 
-print(f"[VOICE INBOUND] Called(raw)={called_raw} -> {called_e164} | From(raw)={caller_raw} -> {caller_e164}")
+    print(f"[VOICE INBOUND] Called(raw)={called_raw} -> {called_e164} | From(raw)={caller_raw} -> {caller_e164}")
 
-target_user = find_user_by_assigned_number(called_e164)
-if not target_user or not target_user.get("email"):
-    resp.say("We could not find a destination for this call. Goodbye.")
-    print(f"[VOICE INBOUND] No user mapped to {called_e164}")
-    return str(resp), 200, {"Content-Type": "application/xml"}
+    target_user = find_user_by_assigned_number(called_e164)
+    if not target_user or not target_user.get("email"):
+        resp.say("We could not find a destination for this call. Goodbye.")
+        print(f"[VOICE INBOUND] No user mapped to {called_e164}")
+        return str(resp), 200, {"Content-Type": "application/xml"}
 
-identity = str(target_user["email"]).strip()
-print(f"[VOICE INBOUND] Routing to identity={identity!r}")
+    identity = str(target_user["email"]).strip()
+    print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
-dial = Dial(timeout=25)
-dial.client(
-    identity,
-    status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
-    status_callback_event="initiated ringing answered completed"
-)
-resp.append(dial)
+    dial = Dial(timeout=25)
+    dial.client(
+        identity,
+        status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
+        status_callback_event="initiated ringing answered completed"
+    )
+    resp.append(dial)
 
             
 
