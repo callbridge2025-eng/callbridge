@@ -108,7 +108,6 @@ def find_user_by_assigned_number(num):
     return None
 
 def _https_url(url, req):
-    # Render/other proxies often set X-Forwarded-Proto=https for HTTPS requests
     proto = req.headers.get("X-Forwarded-Proto", "https")
     if url.startswith("http://") and proto == "https":
         return "https://" + url[len("http://"):]
@@ -328,7 +327,6 @@ def twilio_token():
 def voice():
     """Twilio webhook: outgoing (client->PSTN) or incoming (PSTN->client)."""
     try:
-        # Use From=client:IDENTITY to detect client-originated calls.
         from_param = request.values.get("From", "") or ""
         is_client_call = from_param.startswith("client:")
 
@@ -344,7 +342,7 @@ def voice():
             outbound_to = request.values.get("To", "") or ""
             requested_caller = request.values.get("CallerId", "")
 
-            identity = from_param.split(":", 1)[1]  # after "client:"
+            identity = from_param.split(":", 1)[1] if ":" in from_param else ""
             user = find_user_by_email(identity) if identity else None
             user_assigned = (user or {}).get("assigned_number") if user else None
 
@@ -357,49 +355,37 @@ def voice():
             dial.number(outbound_to)
             resp.append(dial)
 
-     if is_client_call:
-    # ===== OUTGOING: client -> PSTN =====
-    outbound_to = request.values.get("To", "") or ""
-    requested_caller = request.values.get("CallerId", "")
+        else:
+            # ===== INCOMING: PSTN -> client =====
+            called_raw = request.values.get("Called") or request.values.get("To") or ""
+            caller_raw = request.values.get("Caller") or request.values.get("From") or ""
+            called_e164 = to_e164(called_raw, default_region='US')
+            caller_e164 = to_e164(caller_raw, default_region='US')
 
-    identity = from_param.split(":", 1)[1]
-    user = find_user_by_email(identity) if identity else None
-    user_assigned = (user or {}).get("assigned_number") if user else None
+            print(f"[VOICE INBOUND] Called(raw)={called_raw} -> {called_e164} | From(raw)={caller_raw} -> {caller_e164}")
 
-    caller_id = to_e164(requested_caller or user_assigned or default_caller_id, default_region='US')
-    outbound_to = to_e164(outbound_to, default_region='US')
+            target_user = find_user_by_assigned_number(called_e164)
+            if not target_user or not target_user.get("email"):
+                resp.say("We could not find a destination for this call. Goodbye.")
+                print(f"[VOICE INBOUND] No user mapped to {called_e164}")
+                return str(resp), 200, {"Content-Type": "application/xml"}
 
-    print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
+            identity = str(target_user["email"]).strip()
+            print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
-    dial = Dial(callerId=caller_id)
-    dial.number(outbound_to)
-    resp.append(dial)
+            dial = Dial(timeout=25)
+            dial.client(
+                identity,
+                status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
+                status_callback_event="initiated ringing answered completed"
+            )
+            resp.append(dial)
 
-else:
-    # ===== INCOMING: PSTN -> client =====
-    called_raw = request.values.get("Called") or request.values.get("To") or ""
-    caller_raw = request.values.get("Caller") or request.values.get("From") or ""
-    called_e164 = to_e164(called_raw, default_region='US')
-    caller_e164 = to_e164(caller_raw, default_region='US')
-
-    print(f"[VOICE INBOUND] Called(raw)={called_raw} -> {called_e164} | From(raw)={caller_raw} -> {caller_e164}")
-
-    target_user = find_user_by_assigned_number(called_e164)
-    if not target_user or not target_user.get("email"):
-        resp.say("We could not find a destination for this call. Goodbye.")
-        print(f"[VOICE INBOUND] No user mapped to {called_e164}")
         return str(resp), 200, {"Content-Type": "application/xml"}
 
-    identity = str(target_user["email"]).strip()
-    print(f"[VOICE INBOUND] Routing to identity={identity!r}")
-
-    dial = Dial(timeout=25)
-    dial.client(
-        identity,
-        status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
-        status_callback_event="initiated ringing answered completed"
-    )
-    resp.append(dial)
+    except Exception as e:
+        print("Error in /voice:", e)
+        return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
 
 
 
