@@ -122,6 +122,30 @@ def after_request(response):
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
 
+
+def _coerce_int(v, default=0):
+    try:
+        if v is None:
+            return default
+        s = str(v).strip()
+        if s == "":
+            return default
+        # handles "12", "12.0", 12, 12.0
+        return int(float(s))
+    except Exception:
+        return default
+
+def _get_first_key(d: dict, candidates):
+    """Return the first present key (case-insensitive) from candidates."""
+    lower = {k.lower(): k for k in d.keys()}
+    for c in candidates:
+        k = lower.get(c.lower())
+        if k is not None:
+            return d.get(k)
+    return None
+
+
+
 # --- Phone normalization & Sheets RAW append ---
 
 def to_e164(num: str, default_region='US') -> str:
@@ -229,7 +253,8 @@ def get_calls():
                 "created_at": r.get("Timestamp") or r.get("timestamp") or None,
                 "from_number": r.get("From") or r.get("From Number") or r.get("from"),
                 "to_number": r.get("To") or r.get("To Number") or r.get("to"),
-                "duration": r.get("Duration") or r.get("duration") or 0,
+                "dur_val = _get_first_key(r, ["Duration", "duration", "Duration (s)", "duration_seconds", "Call Duration"])
+"duration": _coerce_int(dur_val, 0),
                 "user_email": r.get("User Email") or r.get("User") or r.get("user_email"),
                 "call_type": r.get("Call Type") or r.get("call_type"),
                 "status": r.get("Notes") or r.get("Notes / Status") or r.get("status"),
