@@ -190,44 +190,43 @@ def home():
 def login():
     if request.method == "OPTIONS":
         return _ok_cors()
-    try:
-        data = request.get_json(force=True)
-        email = data.get("email")
-        password = data.get("password")
-        if not email or not password:
-            return jsonify({"error": "email and password required"}), 400
 
-        rows = users_ws.get_all_records()
-        for r in rows:
-            if (
-                str(r.get("Email", "")).strip().lower() == str(email).strip().lower()
-                and str(r.get("Password", "")) == str(password)
-            ):
-                token = secrets.token_urlsafe(32)
-                email_l = str(r.get("Email")).strip().lower()
+    data = request.get_json(force=True)
+    email = data.get("email")
+    password = data.get("password")
+    if not email or not password:
+        return jsonify({"error": "email and password required"}), 400
 
-                old_token = ACTIVE_TOKEN_FOR.get(email_l)
-                if old_token:
-                    TOKENS.pop(old_token, None)
+    rows = users_ws.get_all_records()
+    for r in rows:
+        if (
+            str(r.get("Email", "")).strip().lower() == str(email).strip().lower()
+            and str(r.get("Password", "")) == str(password)
+        ):
+            # single-session token issue/refresh
+            token = secrets.token_urlsafe(32)
+            email_l = str(r.get("Email")).strip().lower()
 
-                ACTIVE_TOKEN_FOR[email_l] = token
-                TOKENS[token] = email_l
+            old_token = ACTIVE_TOKEN_FOR.get(email_l)
+            if old_token:
+                TOKENS.pop(old_token, None)
 
-                user = {
-                    "id": r.get("Email"),
-                    "email": r.get("Email"),
-                    "display_name": r.get("Display Name"),
-                    "assigned_number": r.get("Assigned Number"),
-                    "expiry_date": r.get("Expiry Date"),
-                    "role": r.get("Role"),
-                }
-                return jsonify({"token": token, "user": user})
+            ACTIVE_TOKEN_FOR[email_l] = token
+            TOKENS[token] = email_l
 
-        # ✅ must be here, at the same indentation as the `for` loop
-        return jsonify({"error": "Invalid credentials"}), 401
+            user = {
+                "id": r.get("Email"),
+                "email": r.get("Email"),
+                "display_name": r.get("Display Name"),
+                "assigned_number": r.get("Assigned Number"),
+                "expiry_date": r.get("Expiry Date"),
+                "role": r.get("Role"),
+            }
+            return jsonify({"token": token, "user": user})
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    # no match found
+    return jsonify({"error": "Invalid credentials"}), 401
+
 
 
 
