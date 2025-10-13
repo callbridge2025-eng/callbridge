@@ -289,15 +289,6 @@ async function performLogout(){
   showLoginModal();
 }
 
-async function handleAuthResponse(res){
-  if (res && res.status === 401){
-    alert("You were signed out because your account logged in from another device.");
-    await performLogout();
-    throw new Error("Unauthorized");
-  }
-  return res;
-}
-  
 /* ---------- call-save ---------- */
 async function remoteSaveCall(payload){
  const emailQS = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
@@ -336,14 +327,6 @@ async function loadProfile(){
   }catch(e){ console.error("loadProfile error", e); }
 }
 
-const res = await fetch(`${API_BASE}/profile`, {
-  method: "POST",
-  headers: { "Content-Type":"application/json", ...authHeaders() },
-  body: JSON.stringify({ email: savedUser.email })
-});
-await handleAuthResponse(res);
-
-  
 /* ---------- safe Twilio init (waits for SDK if needed) ---------- */
 async function safeInitTwilioDevice(tokenJson){
   // tokenJson is object { token: "...", callerId: "..." }
