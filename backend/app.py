@@ -199,17 +199,18 @@ def login():
 
         rows = users_ws.get_all_records()
         for r in rows:
-            if str(r.get("Email", "")).strip().lower() == str(email).strip().lower() and str(r.get("Password","")) == str(password):
-                # ✅ new login token handling
+            if (
+                str(r.get("Email", "")).strip().lower() == str(email).strip().lower()
+                and str(r.get("Password", "")) == str(password)
+            ):
+                # ✅ Token handling for single-session login
                 token = secrets.token_urlsafe(32)
                 email_l = str(r.get("Email")).strip().lower()
 
-                # Invalidate previous token for this user
                 old_token = ACTIVE_TOKEN_FOR.get(email_l)
                 if old_token:
                     TOKENS.pop(old_token, None)
 
-                # Register new active token
                 ACTIVE_TOKEN_FOR[email_l] = token
                 TOKENS[token] = email_l
 
@@ -223,11 +224,12 @@ def login():
                 }
                 return jsonify({"token": token, "user": user})
 
-        # If we got here, no match found
+        # ⬇️ This line must align with the `for` loop, NOT inside it
         return jsonify({"error": "Invalid credentials"}), 401
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 # Invalidate any previous token for this user
