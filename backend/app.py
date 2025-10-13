@@ -376,6 +376,7 @@ def voice():
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
             # Ring the Twilio <Client> (your JS SDK logged in as this email)
+
 dial = Dial(timeout=25)
 dial.client(
     identity,
@@ -383,7 +384,6 @@ dial.client(
     status_callback_event="initiated ringing answered completed"
 )
 resp.append(dial)
-
             
 
         return str(resp), 200, {"Content-Type": "application/xml"}
