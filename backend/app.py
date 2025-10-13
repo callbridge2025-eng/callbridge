@@ -237,30 +237,6 @@ def login():
 
 
 
-# Invalidate any previous token for this user
-old_token = ACTIVE_TOKEN_FOR.get(email_l)
-if old_token:
-    TOKENS.pop(old_token, None)
-
-# Register new active token
-ACTIVE_TOKEN_FOR[email_l] = token
-TOKENS[token] = email_l
-
-user = {
-    "id": r.get("Email"),
-    "email": r.get("Email"),
-    "display_name": r.get("Display Name"),
-    "assigned_number": r.get("Assigned Number"),
-    "expiry_date": r.get("Expiry Date"),
-    "role": r.get("Role"),
-}
-return jsonify({"token": token, "user": user})
-
-        return jsonify({"error": "Invalid credentials"}), 401
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
-
 @app.route("/profile", methods=["POST", "OPTIONS"])
 def profile():
     if request.method == "OPTIONS":
