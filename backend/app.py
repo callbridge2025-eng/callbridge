@@ -30,10 +30,8 @@ def handle_options():
         return resp
 
 
-# Simple in-memory token maps
-TOKENS = {}                 # token -> email
-ACTIVE_TOKEN_FOR = {}       # email(lowercase) -> active token
-
+# Simple in-memory token map (replace with proper DB/JWT in production)
+TOKENS = {}
 
 # ---------------- Google Sheets Setup ----------------
 CREDS_FILE = os.environ.get("GOOGLE_CREDS_FILE", "credentials.json")
@@ -77,17 +75,8 @@ def auth_from_token(header):
         return None
     if header.startswith("Bearer "):
         token = header.split(" ", 1)[1].strip()
-    else:
-        token = header.strip()
-
-    email = TOKENS.get(token)
-    if not email:
-        return None
-    # enforce single active session
-    if ACTIVE_TOKEN_FOR.get(str(email).strip().lower()) != token:
-        return None
-    return email
-
+        return TOKENS.get(token)
+    return None
 
 def _ok_cors():
     resp = make_response("", 200)
@@ -186,56 +175,35 @@ def append_row_raw(ws, row):
 def home():
     return jsonify({"message": "Backend is running!"})
 
-
-
 @app.route("/login", methods=["POST", "OPTIONS"])
 def login():
     if request.method == "OPTIONS":
         return _ok_cors()
+    try:
+        data = request.get_json(force=True)
+        email = data.get("email")
+        password = data.get("password")
+        if not email or not password:
+            return jsonify({"error": "email and password required"}), 400
 
-    data = request.get_json(force=True)
-    email = (data.get("email") or "").strip().lower()
-    password = str(data.get("password") or "")
-
-    if not email or not password:
-        return jsonify({"error": "email and password required"}), 400
-
-    rows = users_ws.get_all_records()
-    match = next(
-        (
-            r for r in rows
-            if str(r.get("Email", "")).strip().lower() == email
-            and str(r.get("Password", "")) == password
-        ),
-        None
-    )
-
-    if match:
-        # single-session token handling
-        token = secrets.token_urlsafe(32)
-        email_l = str(match.get("Email")).strip().lower()
-
-        old_token = ACTIVE_TOKEN_FOR.get(email_l)
-        if old_token:
-            TOKENS.pop(old_token, None)
-
-        ACTIVE_TOKEN_FOR[email_l] = token
-        TOKENS[token] = email_l
-
-        user = {
-            "id": match.get("Email"),
-            "email": match.get("Email"),
-            "display_name": match.get("Display Name"),
-            "assigned_number": match.get("Assigned Number"),
-            "expiry_date": match.get("Expiry Date"),
-            "role": match.get("Role"),
-        }
-        return jsonify({"token": token, "user": user})
-
-    return jsonify({"error": "Invalid credentials"}), 401
-
-
-
+        rows = users_ws.get_all_records()
+        for r in rows:
+            if str(r.get("Email", "")).strip().lower() == str(email).strip().lower() and str(r.get("Password","")) == str(password):
+                token = secrets.token_urlsafe(32)
+                TOKENS[token] = r.get("Email")
+                user = {
+                    "id": r.get("Email"),
+                    "email": r.get("Email"),
+                    "display_name": r.get("Display Name"),
+                    "assigned_number": r.get("Assigned Number"),
+                    "expiry_date": r.get("Expiry Date"),
+                    "role": r.get("Role"),
+                }
+                return jsonify({"token": token, "user": user})
+        return jsonify({"error": "Invalid credentials"}), 401
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route("/profile", methods=["POST", "OPTIONS"])
 def profile():
