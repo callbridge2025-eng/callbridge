@@ -201,7 +201,6 @@ def login():
         return jsonify({"error": "email and password required"}), 400
 
     rows = users_ws.get_all_records()
-    # find a matching row (case-insensitive email, exact password)
     match = next(
         (
             r for r in rows
@@ -211,29 +210,29 @@ def login():
         None
     )
 
-    if not match:
-        return jsonify({"error": "Invalid credentials"}), 401
+    if match:
+        # single-session token handling
+        token = secrets.token_urlsafe(32)
+        email_l = str(match.get("Email")).strip().lower()
 
-    # --- single-session token handling ---
-    token = secrets.token_urlsafe(32)
-    email_l = str(match.get("Email")).strip().lower()
+        old_token = ACTIVE_TOKEN_FOR.get(email_l)
+        if old_token:
+            TOKENS.pop(old_token, None)
 
-    old_token = ACTIVE_TOKEN_FOR.get(email_l)
-    if old_token:
-        TOKENS.pop(old_token, None)
+        ACTIVE_TOKEN_FOR[email_l] = token
+        TOKENS[token] = email_l
 
-    ACTIVE_TOKEN_FOR[email_l] = token
-    TOKENS[token] = email_l
+        user = {
+            "id": match.get("Email"),
+            "email": match.get("Email"),
+            "display_name": match.get("Display Name"),
+            "assigned_number": match.get("Assigned Number"),
+            "expiry_date": match.get("Expiry Date"),
+            "role": match.get("Role"),
+        }
+        return jsonify({"token": token, "user": user})
 
-    user = {
-        "id": match.get("Email"),
-        "email": match.get("Email"),
-        "display_name": match.get("Display Name"),
-        "assigned_number": match.get("Assigned Number"),
-        "expiry_date": match.get("Expiry Date"),
-        "role": match.get("Role"),
-    }
-    return jsonify({"token": token, "user": user})
+    return jsonify({"error": "Invalid credentials"}), 401
 
 
 
