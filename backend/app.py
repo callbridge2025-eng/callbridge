@@ -357,7 +357,25 @@ def voice():
             dial.number(outbound_to)
             resp.append(dial)
 
-        else:
+     if is_client_call:
+    # ===== OUTGOING: client -> PSTN =====
+    outbound_to = request.values.get("To", "") or ""
+    requested_caller = request.values.get("CallerId", "")
+
+    identity = from_param.split(":", 1)[1]
+    user = find_user_by_email(identity) if identity else None
+    user_assigned = (user or {}).get("assigned_number") if user else None
+
+    caller_id = to_e164(requested_caller or user_assigned or default_caller_id, default_region='US')
+    outbound_to = to_e164(outbound_to, default_region='US')
+
+    print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
+
+    dial = Dial(callerId=caller_id)
+    dial.number(outbound_to)
+    resp.append(dial)
+
+else:
     # ===== INCOMING: PSTN -> client =====
     called_raw = request.values.get("Called") or request.values.get("To") or ""
     caller_raw = request.values.get("Caller") or request.values.get("From") or ""
@@ -382,15 +400,6 @@ def voice():
         status_callback_event="initiated ringing answered completed"
     )
     resp.append(dial)
-
-            
-
-        return str(resp), 200, {"Content-Type": "application/xml"}
-
-    except Exception as e:
-        print("Error in /voice:", e)
-        return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
-
 
 
 
