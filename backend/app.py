@@ -320,8 +320,10 @@ def twilio_token():
 def voice():
     """Twilio webhook: outgoing (client->PSTN) or incoming (PSTN->client)."""
     try:
-        outbound_to = request.form.get("To")  # present for client->PSTN
-        from_param = request.form.get("From", "") or ""
+        # Use From=client:IDENTITY to detect client-originated calls.
+        from_param = request.values.get("From", "") or ""
+        is_client_call = from_param.startswith("client:")
+
         default_caller_id = (
             os.environ.get("TWILIO_CALLER_ID") or
             os.environ.get("TWILIO_PHONE_NUMBER")
@@ -329,10 +331,12 @@ def voice():
 
         resp = VoiceResponse()
 
-        if outbound_to:
+        if is_client_call:
             # ===== OUTGOING: client -> PSTN =====
-            requested_caller = request.form.get("CallerId", "")
-            identity = from_param.split(":", 1)[1] if from_param.startswith("client:") else from_param
+            outbound_to = request.values.get("To", "") or ""
+            requested_caller = request.values.get("CallerId", "")
+
+            identity = from_param.split(":", 1)[1]  # after "client:"
             user = find_user_by_email(identity) if identity else None
             user_assigned = (user or {}).get("assigned_number") if user else None
 
@@ -344,6 +348,7 @@ def voice():
             dial = Dial(callerId=caller_id)
             dial.number(outbound_to)
             resp.append(dial)
+
         else:
             # ===== INCOMING: PSTN -> client =====
             called_raw = request.values.get("Called") or request.values.get("To") or ""
@@ -362,7 +367,7 @@ def voice():
             identity = str(target_user["email"]).strip()
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
-            # Attach a status callback so we see if it rings/fails/no-answer
+            # Ring the Twilio <Client> (your JS SDK logged in as this email)
             dial = Dial(timeout=25)
             dial.client(
                 identity,
@@ -372,9 +377,11 @@ def voice():
             resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
+
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+
 
 
 
