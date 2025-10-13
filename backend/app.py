@@ -203,7 +203,6 @@ def login():
                 str(r.get("Email", "")).strip().lower() == str(email).strip().lower()
                 and str(r.get("Password", "")) == str(password)
             ):
-                # ✅ Token handling for single-session login
                 token = secrets.token_urlsafe(32)
                 email_l = str(r.get("Email")).strip().lower()
 
@@ -224,11 +223,12 @@ def login():
                 }
                 return jsonify({"token": token, "user": user})
 
-        # ⬇️ This line must align with the `for` loop, NOT inside it
+        # ✅ must be here, at the same indentation as the `for` loop
         return jsonify({"error": "Invalid credentials"}), 401
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 
