@@ -384,8 +384,7 @@ dial.client(
 )
 resp.append(dial)
 
-            )
-            resp.append(dial)
+            
 
         return str(resp), 200, {"Content-Type": "application/xml"}
 
