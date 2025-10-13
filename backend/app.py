@@ -380,7 +380,7 @@ dial = Dial(timeout=25)
 dial.client(
     identity,
     status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
-    status_callback_event="initiated ringing answered completed"]
+    status_callback_event="initiated ringing answered completed"
 )
 resp.append(dial)
 
