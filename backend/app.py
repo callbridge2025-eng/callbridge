@@ -381,7 +381,7 @@ def voice():
             dial.number(outbound_to)
             resp.append(dial)
 
-        else:
+                else:
             # ===== INCOMING: PSTN -> client =====
             called_raw = request.values.get("Called") or request.values.get("To") or ""
             caller_raw = request.values.get("Caller") or request.values.get("From") or ""
@@ -399,26 +399,23 @@ def voice():
             identity = str(target_user["email"]).strip()
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
+            # ✅ NEW: use Dial action callback to log missed calls
             dial = Dial(
-    timeout=25,
-    # <-- NEW: reliably posts DialCallStatus after the dial finishes
-    action=_https_url(f"{request.url_root.rstrip('/')}/dial-action", request),
-    method="POST"
-)
+                timeout=25,
+                action=_https_url(f"{request.url_root.rstrip('/')}/dial-action", request),
+                method="POST"
+            )
 
-# Keep status_callback (optional, for extra telemetry)
-dial.client(
-    identity,
-    status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
-    status_callback_event="initiated ringing answered completed"
-)
-resp.append(dial)
+            # Optional: keep status callback for logging ringing/answered
+            dial.client(
+                identity,
+                status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
+                status_callback_event="initiated ringing answered completed"
+            )
+            resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
 
-    except Exception as e:
-        print("Error in /voice:", e)
-        return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
 
 
 
