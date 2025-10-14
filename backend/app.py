@@ -478,46 +478,50 @@ def client_status():
 @app.route("/dial-action", methods=["POST"])
 def dial_action():
     """
-    Called by Twilio after <Dial> finishes (because we set the 'action' URL).
-    Logs missed calls when DialCallStatus is no-answer/busy/failed.
+    Called by Twilio after <Dial> finishes (we set 'action' on <Dial>).
+    On the parent call leg (PSTN -> Twilio), so parameters often look like:
+      - DialCallStatus: completed|no-answer|busy|failed  (final outcome)
+      - From:  +E164 caller
+      - Called: +E164 Twilio number that was originally called (your DID)
+      - To:     +E164 Twilio number (same as Called on parent leg)
+    We log a missed call when DialCallStatus is no-answer/busy/failed, and we
+    map the row to the user by the Twilio number (Called).
     """
     try:
         data = request.values.to_dict()
         print("[DIAL ACTION]", data)
 
         dial_status = (data.get("DialCallStatus") or "").lower()   # completed|no-answer|busy|failed
+        if dial_status not in {"no-answer", "busy", "failed"}:
+            # Nothing to log for answered calls
+            return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
+
         from_raw = data.get("From") or ""
-        to_raw = data.get("Called") or data.get("To") or ""        # often 'client:<identity>'
+        called_raw = data.get("Called") or data.get("To") or ""   # Twilio DID on parent leg
 
-        # Extract client identity from 'client:email'
-        identity = to_raw.split(":", 1)[1] if str(to_raw).startswith("client:") else to_raw
+        # Normalize numbers
+        from_e164 = to_e164(from_raw,  default_region="US")
+        called_e164 = to_e164(called_raw, default_region="US")
 
-        if dial_status in {"no-answer", "busy", "failed"}:
-            # map identity -> user
-            user_email = ""
-            assigned_e164 = ""
-            if identity:
-                u = find_user_by_email(identity)
-                if u:
-                    user_email = u.get("email") or ""
-                    assigned_e164 = to_e164(u.get("assigned_number") or "", default_region="US")
+        # Map the Twilio DID -> user
+        user = find_user_by_assigned_number(called_e164)
+        user_email = (user or {}).get("email") or ""
 
-            from_e164 = to_e164(from_raw, default_region="US")
-            to_e164_num = assigned_e164 or to_e164(to_raw, default_region="US")
+        # Write missed-call row
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        append_row_raw(
+            calls_ws,
+            [timestamp, from_e164, called_e164, 0, user_email, "incoming", f"Missed ({dial_status})"]
+        )
+        print(f"[DIAL ACTION] Missed call logged: from={from_e164} to={called_e164} user={user_email}")
 
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            append_row_raw(
-                calls_ws,
-                [timestamp, from_e164, to_e164_num, 0, user_email, "incoming", f"Missed ({dial_status})"]
-            )
-            print(f"[DIAL ACTION] Missed call logged: from={from_e164} to={to_e164_num} user={user_email}")
-
-        # Return a tiny TwiML so Twilio can continue/finish cleanly
+        # Tiny TwiML response so Twilio ends cleanly
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
     except Exception as e:
         print("dial-action error:", e)
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
+
 
 
 
