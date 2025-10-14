@@ -399,13 +399,20 @@ def voice():
             identity = str(target_user["email"]).strip()
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
-            dial = Dial(timeout=25)
-            dial.client(
-                identity,
-                status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
-                status_callback_event="initiated ringing answered completed"
-            )
-            resp.append(dial)
+            dial = Dial(
+    timeout=25,
+    # <-- NEW: reliably posts DialCallStatus after the dial finishes
+    action=_https_url(f"{request.url_root.rstrip('/')}/dial-action", request),
+    method="POST"
+)
+
+# Keep status_callback (optional, for extra telemetry)
+dial.client(
+    identity,
+    status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
+    status_callback_event="initiated ringing answered completed"
+)
+resp.append(dial)
 
         return str(resp), 200, {"Content-Type": "application/xml"}
 
@@ -466,6 +473,49 @@ def client_status():
         return ("", 204)
 
 
+@app.route("/dial-action", methods=["POST"])
+def dial_action():
+    """
+    Called by Twilio after <Dial> finishes (because we set the 'action' URL).
+    Logs missed calls when DialCallStatus is no-answer/busy/failed.
+    """
+    try:
+        data = request.values.to_dict()
+        print("[DIAL ACTION]", data)
+
+        dial_status = (data.get("DialCallStatus") or "").lower()   # completed|no-answer|busy|failed
+        from_raw = data.get("From") or ""
+        to_raw = data.get("Called") or data.get("To") or ""        # often 'client:<identity>'
+
+        # Extract client identity from 'client:email'
+        identity = to_raw.split(":", 1)[1] if str(to_raw).startswith("client:") else to_raw
+
+        if dial_status in {"no-answer", "busy", "failed"}:
+            # map identity -> user
+            user_email = ""
+            assigned_e164 = ""
+            if identity:
+                u = find_user_by_email(identity)
+                if u:
+                    user_email = u.get("email") or ""
+                    assigned_e164 = to_e164(u.get("assigned_number") or "", default_region="US")
+
+            from_e164 = to_e164(from_raw, default_region="US")
+            to_e164_num = assigned_e164 or to_e164(to_raw, default_region="US")
+
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            append_row_raw(
+                calls_ws,
+                [timestamp, from_e164, to_e164_num, 0, user_email, "incoming", f"Missed ({dial_status})"]
+            )
+            print(f"[DIAL ACTION] Missed call logged: from={from_e164} to={to_e164_num} user={user_email}")
+
+        # Return a tiny TwiML so Twilio can continue/finish cleanly
+        return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
+
+    except Exception as e:
+        print("dial-action error:", e)
+        return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
 
 
