@@ -364,35 +364,36 @@ def voice():
         resp = VoiceResponse()
 
         if is_client_call:
-            # ===== OUTGOING: client -> PSTN =====
-            outbound_to = request.values.get("To", "") or ""
-            requested_caller = request.values.get("CallerId", "")
+    # ===== OUTGOING: client -> PSTN =====
+    outbound_to = request.values.get("To", "") or ""
+    requested_caller = request.values.get("CallerId", "")
 
-            identity = from_param.split(":", 1)[1] if ":" in from_param else ""
-            user = find_user_by_email(identity) if identity else None
-            user_assigned = (user or {}).get("assigned_number") if user else None
+    identity = from_param.split(":", 1)[1] if ":" in from_param else ""
+    user = find_user_by_email(identity) if identity else None
+    user_assigned = (user or {}).get("assigned_number") if user else None
 
-            caller_id = to_e164(requested_caller or user_assigned or default_caller_id, default_region='US')
-            outbound_to = to_e164(outbound_to, default_region='US')
+    caller_id = to_e164(requested_caller or user_assigned or default_caller_id, default_region='US')
+    outbound_to = to_e164(outbound_to, default_region='US')
 
-            print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
-            # Tell the caller what's about to happen (played to YOU)
-resp.say(
-    "Calling now. If voicemail answers, you'll hear a beep. "
-    "After the beep, record your message and hang up when finished.",
-    voice="alice"
-)
+    print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
 
-# Outbound with voicemail detection
-dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
-dial.number(
-    outbound_to,
-    machine_detection="DetectMessageEnd",
-    machine_detection_timeout="45",
-    url=_https_url(f"{request.url_root.rstrip('/')}/vm-screen", request),
-    method="POST"
-)
-resp.append(dial)
+    # 👇 Paste this block here, EXACTLY with 4 spaces indentation (same as print)
+    resp.say(
+        "Calling now. If voicemail answers, you'll hear a beep. "
+        "After the beep, record your message and hang up when finished.",
+        voice="alice"
+    )
+
+    # Outbound with voicemail detection (INDENTED inside the if-block)
+    dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
+    dial.number(
+        outbound_to,
+        machine_detection="DetectMessageEnd",       # detect voicemail greeting/beep
+        machine_detection_timeout="45",
+        url=_https_url(f"{request.url_root.rstrip('/')}/vm-screen", request),
+        method="POST"
+    )
+    resp.append(dial)
 
             # Outbound with voicemail detection (INDENTED inside the if-block)
             dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
