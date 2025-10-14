@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
-from twilio.rest import Client
 import os, secrets, time, traceback
 
 # Google Sheets
@@ -145,10 +144,6 @@ def _get_first_key(d: dict, candidates):
             return d.get(k)
     return None
 
-
-
-def _twilio_client():
-    return Client(os.environ.get("TWILIO_ACCOUNT_SID"), os.environ.get("TWILIO_AUTH_TOKEN"))
 
 
 # --- Phone normalization & Sheets RAW append ---
@@ -368,7 +363,7 @@ def voice():
 
         resp = VoiceResponse()
 
-                if is_client_call:
+        if is_client_call:
             # ===== OUTGOING: client -> PSTN =====
             outbound_to = request.values.get("To", "") or ""
             requested_caller = request.values.get("CallerId", "")
@@ -382,16 +377,9 @@ def voice():
 
             print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
 
-            # ✅ NEW: set action so we can branch to voicemail on no-answer/busy/failed
-            action_url = _https_url(
-                f"{request.url_root.rstrip('/')}/outbound-action?to={outbound_to}&from={caller_id}&identity={identity}",
-                request
-            )
-
-            dial = Dial(callerId=caller_id, timeout=25, action=action_url, method="POST")
+            dial = Dial(callerId=caller_id)
             dial.number(outbound_to)
             resp.append(dial)
-
 
         else:
             # ===== INCOMING: PSTN -> client =====
@@ -534,106 +522,6 @@ def dial_action():
         print("dial-action error:", e)
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
-
-@app.route("/outbound-action", methods=["POST"])
-def outbound_action():
-    """
-    Called by Twilio after the <Dial> to the callee finishes (outbound).
-    If not answered, let the caller (your user) record a voicemail and we'll SMS it to the callee.
-    """
-    try:
-        data = request.values.to_dict()
-        print("[OUTBOUND ACTION]", data)
-
-        dial_status = (data.get("DialCallStatus") or "").lower()   # completed|no-answer|busy|failed
-        # params we passed in the action URL:
-        to_number = to_e164(request.args.get("to") or "", default_region="US")
-        from_number = to_e164(request.args.get("from") or "", default_region="US")
-        identity = (request.args.get("identity") or "").strip()
-
-        # If callee ANSWERED, nothing else to do.
-        if dial_status == "completed":
-            return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
-
-        # Otherwise, prompt our user to leave a voicemail to send via SMS link.
-        vr = VoiceResponse()
-        vr.say("The person you called did not answer. Please record a short voicemail after the tone. "
-               "Press the pound key when finished.")
-        callback = _https_url(
-            f"{request.url_root.rstrip('/')}/voicemail-send?to={to_number}&from={from_number}&identity={identity}",
-            request
-        )
-        vr.record(
-            max_length=180,
-            play_beep=True,
-            finish_on_key="#",
-            recording_status_callback=callback,
-            recording_status_callback_method="POST"
-        )
-        vr.say("Thank you. Your voicemail will be delivered.")
-        vr.hangup()
-        return str(vr), 200, {"Content-Type": "application/xml"}
-
-    except Exception as e:
-        print("outbound-action error:", e)
-        return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
-
-
-
-@app.route("/voicemail-send", methods=["POST"])
-def voicemail_send():
-    """
-    Twilio posts here after the caller finishes recording.
-    We text the callee a link to the voicemail and log it to CallLogs.
-    """
-    try:
-        data = request.values.to_dict()
-        print("[VOICEMAIL SEND]", data)
-
-        to_number = to_e164(request.args.get("to") or "", default_region="US")
-        from_number = to_e164(request.args.get("from") or "", default_region="US")
-        identity = (request.args.get("identity") or "").strip()
-
-        recording_url = data.get("RecordingUrl") or ""
-        recording_sid = data.get("RecordingSid") or ""
-        recording_duration = int(float(data.get("RecordingDuration") or 0))
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-
-        # Prefer direct audio link (.mp3)
-        media_url = recording_url + ".mp3" if recording_url and not recording_url.endswith((".mp3", ".wav")) else recording_url
-
-        # Send SMS with the voicemail link to the callee
-        try:
-            client = _twilio_client()
-            sms_body = f"You have a voicemail from {identity or 'a caller'}: {media_url}"
-            msg = client.messages.create(
-                to=to_number,
-                from_=from_number,
-                body=sms_body
-            )
-            print(f"[VOICEMAIL SEND] SMS sent {msg.sid} to {to_number}")
-            delivery_note = "Voicemail sent via SMS"
-        except Exception as sms_err:
-            print("SMS send error:", sms_err)
-            delivery_note = f"Voicemail ready (SMS failed): {media_url}"
-
-        # Determine user_email for logging (identity is the user's email)
-        user_email = ""
-        if identity:
-            u = find_user_by_email(identity)
-            if u:
-                user_email = u.get("email") or ""
-
-        # Log as OUTGOING voicemail
-        append_row_raw(
-            calls_ws,
-            [timestamp, from_number, to_number, recording_duration, user_email, "outgoing", f"{delivery_note}: {media_url}"]
-        )
-
-        return ("", 204)
-    except Exception as e:
-        print("voicemail-send error:", e)
-        return ("", 204)
 
 
 
