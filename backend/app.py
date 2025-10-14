@@ -376,6 +376,23 @@ def voice():
             outbound_to = to_e164(outbound_to, default_region='US')
 
             print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
+            # Tell the caller what's about to happen (played to YOU)
+resp.say(
+    "Calling now. If voicemail answers, you'll hear a beep. "
+    "After the beep, record your message and hang up when finished.",
+    voice="alice"
+)
+
+# Outbound with voicemail detection
+dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
+dial.number(
+    outbound_to,
+    machine_detection="DetectMessageEnd",
+    machine_detection_timeout="45",
+    url=_https_url(f"{request.url_root.rstrip('/')}/vm-screen", request),
+    method="POST"
+)
+resp.append(dial)
 
             # Outbound with voicemail detection (INDENTED inside the if-block)
             dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
@@ -533,9 +550,8 @@ def dial_action():
 @app.post("/vm-screen")
 def vm_screen():
     """
-    Runs on the callee leg before bridging to your user.
-    If Twilio detects voicemail (after greeting/beep), play message and hang up.
-    If human/unknown, return empty TwiML so Twilio bridges normally.
+    Callee-leg handler. If voicemail is detected, wait through the greeting/beep,
+    then return empty TwiML so Twilio bridges the caller to the voicemail IMMEDIATELY.
     """
     try:
         answered_by = (request.values.get("AnsweredBy") or "").lower()
@@ -543,24 +559,19 @@ def vm_screen():
         vr = VoiceResponse()
 
         if answered_by.startswith("machine_end_") or answered_by.startswith("machine"):
-            vr.pause(length=1)  # short delay before playing
-
-            vm_url = (os.environ.get("VOICEMAIL_AUDIO_URL") or "").strip()
-            vm_tts = (os.environ.get("VOICEMAIL_TTS") or "Sorry we missed you. Please call us back.").strip()
-
-            if vm_url:
-                vr.play(vm_url)
-            else:
-                vr.say(vm_tts)
-
-            vr.hangup()
+            # Small pause to be safely past the beep—then bridge
+            vr.pause(length=1)
+            # Return empty <Response/> → Twilio bridges the legs now (post-beep)
             return str(vr), 200, {"Content-Type": "application/xml"}
 
+        # Human or unknown → also return empty so it bridges normally
         return str(vr), 200, {"Content-Type": "application/xml"}
 
     except Exception as e:
         print("vm-screen error:", e)
+        # Fail-open: let Twilio bridge
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
+
 
 
 
