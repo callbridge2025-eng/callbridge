@@ -363,7 +363,8 @@ def voice():
 
         resp = VoiceResponse()
 
-                if is_client_call:
+        # 👇 This line MUST be indented with **4 spaces** (same as the 'resp =' above)
+        if is_client_call:
             # ===== OUTGOING: client -> PSTN =====
             outbound_to = request.values.get("To", "") or ""
             requested_caller = request.values.get("CallerId", "")
@@ -377,7 +378,7 @@ def voice():
 
             print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
 
-            # 🟡 This line gives you a chance to speak your message after beep
+            # 🟡 NEW voicemail recording prompt
             resp.say(
                 "Calling now. If voicemail answers, you'll hear a beep. "
                 "After the beep, record your message and hang up when finished.",
@@ -388,19 +389,7 @@ def voice():
             dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
             dial.number(
                 outbound_to,
-                machine_detection="DetectMessageEnd",       # detect voicemail greeting/beep
-                machine_detection_timeout="45",
-                url=_https_url(f"{request.url_root.rstrip('/')}/vm-screen", request),
-                method="POST"
-            )
-            resp.append(dial)
-
-
-            # Outbound with voicemail detection (INDENTED inside the if-block)
-            dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
-            dial.number(
-                outbound_to,
-                machine_detection="DetectMessageEnd",       # detect voicemail greeting/beep
+                machine_detection="DetectMessageEnd",
                 machine_detection_timeout="45",
                 url=_https_url(f"{request.url_root.rstrip('/')}/vm-screen", request),
                 method="POST"
@@ -425,14 +414,11 @@ def voice():
             identity = str(target_user["email"]).strip()
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
-            # ✅ use Dial action callback to log missed calls
             dial = Dial(
                 timeout=25,
                 action=_https_url(f"{request.url_root.rstrip('/')}/dial-action", request),
                 method="POST"
             )
-
-            # Optional: status callback for ringing / answered logs
             dial.client(
                 identity,
                 status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
@@ -445,8 +431,6 @@ def voice():
     except Exception as e:
         print("Error in /voice:", e)
         return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
-
-
 
 
 
