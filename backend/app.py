@@ -427,28 +427,47 @@ def voice():
 
 @app.route("/client-status", methods=["POST"])
 def client_status():
+    """
+    Status callback for <Dial><Client>. Twilio posts here with:
+      - CallStatus: ringing | in-progress | completed
+      - DialCallStatus: completed | no-answer | busy | failed (final result of dialing the Client)
+      - From: PSTN caller (E.164)
+      - To:   client:<identity> we dialed (your user's email as identity)
+    We log a missed call when DialCallStatus is no-answer/busy/failed.
+    """
     try:
         data = request.values.to_dict()
         print("[CLIENT STATUS]", data)
 
-        # If Twilio sends a final miss outcome here, log it (some accounts do)
-        dial_status = (data.get("DialCallStatus") or "").lower()
-        if dial_status in {"no-answer", "busy", "failed"}:
-            from_raw = data.get("From") or ""
-            called_raw = data.get("Called") or data.get("To") or ""
+        call_status = (data.get("CallStatus") or "").lower()              # 'ringing'|'in-progress'|'completed'
+        dial_call_status = (data.get("DialCallStatus") or "").lower()      # 'completed'|'no-answer'|'busy'|'failed'
+        from_number_raw = data.get("From") or ""
+        to_raw = data.get("To") or data.get("Called") or ""
 
-            from_e164 = to_e164(from_raw, default_region="US")
-            called_e164 = to_e164(called_raw, default_region="US")
+        # Extract the Client identity ("client:someone@example.com" -> "someone@example.com")
+        identity = to_raw.split(":", 1)[1] if to_raw.startswith("client:") else to_raw
 
-            user = find_user_by_assigned_number(called_e164)
-            user_email = (user or {}).get("email") or ""
+        # Only act when the attempt to reach the Client has finished and was not answered
+        if call_status == "completed" and dial_call_status in {"no-answer", "busy", "failed"}:
+            # Find which user this client identity belongs to
+            user_email = ""
+            assigned_e164 = ""
+            if identity:
+                u = find_user_by_email(identity)
+                if u:
+                    user_email = u.get("email") or ""
+                    assigned_e164 = to_e164(u.get("assigned_number") or "", default_region="US")
+
+            # Fallback: if we didn't resolve the user, still write a row with whatever we have
+            from_e164 = to_e164(from_number_raw, default_region="US")
+            to_e164_num = assigned_e164 or to_e164(to_raw, default_region="US")
 
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             append_row_raw(
                 calls_ws,
-                [timestamp, from_e164, called_e164, 0, user_email, "incoming", f"Missed ({dial_status})"]
+                [timestamp, from_e164, to_e164_num, 0, user_email, "incoming", f"Missed ({dial_call_status})"]
             )
-            print(f"[CLIENT STATUS] Missed call logged: from={from_e164} to={called_e164} user={user_email}")
+            print(f"[CLIENT STATUS] Missed call logged: from={from_e164} to={to_e164_num} user={user_email}")
 
         return ("", 204)
     except Exception as e:
