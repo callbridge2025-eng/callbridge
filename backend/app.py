@@ -377,19 +377,16 @@ def voice():
 
             print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
 
-            # Outbound with voicemail detection
-dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
-
-dial.number(
-    outbound_to,
-    machine_detection="DetectMessageEnd",       # detect voicemail greeting/beep
-    machine_detection_timeout="45",
-    url=_https_url(f"{request.url_root.rstrip('/')}/vm-screen", request),
-    method="POST"
-)
-
-resp.append(dial)
-
+            # Outbound with voicemail detection (INDENTED inside the if-block)
+            dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
+            dial.number(
+                outbound_to,
+                machine_detection="DetectMessageEnd",       # detect voicemail greeting/beep
+                machine_detection_timeout="45",
+                url=_https_url(f"{request.url_root.rstrip('/')}/vm-screen", request),
+                method="POST"
+            )
+            resp.append(dial)
 
         else:
             # ===== INCOMING: PSTN -> client =====
@@ -409,14 +406,14 @@ resp.append(dial)
             identity = str(target_user["email"]).strip()
             print(f"[VOICE INBOUND] Routing to identity={identity!r}")
 
-            # ✅ NEW: use Dial action callback to log missed calls
+            # ✅ use Dial action callback to log missed calls
             dial = Dial(
                 timeout=25,
                 action=_https_url(f"{request.url_root.rstrip('/')}/dial-action", request),
                 method="POST"
             )
 
-            # Optional: keep status callback for ringing / answered logs
+            # Optional: status callback for ringing / answered logs
             dial.client(
                 identity,
                 status_callback=_https_url(f"{request.url_root.rstrip('/')}/client-status", request),
