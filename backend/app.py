@@ -377,9 +377,19 @@ def voice():
 
             print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
 
-            dial = Dial(callerId=caller_id)
-            dial.number(outbound_to)
-            resp.append(dial)
+            # Outbound with voicemail detection
+dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
+
+dial.number(
+    outbound_to,
+    machine_detection="DetectMessageEnd",       # detect voicemail greeting/beep
+    machine_detection_timeout="45",
+    url=_https_url(f"{request.url_root.rstrip('/')}/vm-screen", request),
+    method="POST"
+)
+
+resp.append(dial)
+
 
         else:
             # ===== INCOMING: PSTN -> client =====
@@ -522,6 +532,37 @@ def dial_action():
         print("dial-action error:", e)
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
+
+@app.post("/vm-screen")
+def vm_screen():
+    """
+    Runs on the callee leg before bridging to your user.
+    If Twilio detects voicemail (after greeting/beep), play message and hang up.
+    If human/unknown, return empty TwiML so Twilio bridges normally.
+    """
+    try:
+        answered_by = (request.values.get("AnsweredBy") or "").lower()
+        vr = VoiceResponse()
+
+        if answered_by.startswith("machine_end_") or answered_by.startswith("machine"):
+            vr.pause(length=1)  # short delay before playing
+
+            vm_url = (os.environ.get("VOICEMAIL_AUDIO_URL") or "").strip()
+            vm_tts = (os.environ.get("VOICEMAIL_TTS") or "Sorry we missed you. Please call us back.").strip()
+
+            if vm_url:
+                vr.play(vm_url)
+            else:
+                vr.say(vm_tts)
+
+            vr.hangup()
+            return str(vr), 200, {"Content-Type": "application/xml"}
+
+        return str(vr), 200, {"Content-Type": "application/xml"}
+
+    except Exception as e:
+        print("vm-screen error:", e)
+        return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
 
 
