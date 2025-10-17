@@ -117,6 +117,7 @@
      <div class="controls" style="margin-top:10px">
   <button id="muteBtn" class="btn gray">Mute</button>
   <button id="holdBtn" class="btn gray">Hold</button>
+  <button id="speakerBtn" class="btn gray">Speaker On</button>
   <button id="hangupBtn" class="btn hang" style="display:none">✖ Hangup</button>
       </div>
     </div>
@@ -169,30 +170,16 @@
         <button id="loginCancelBtn" class="btn gray" style="flex:1;display:none">Cancel</button>
       </div>
       <div id="loginError" class="muted" style="color:var(--danger);margin-top:10px;display:none"></div>
+      <div style="margin-top:12px;font-size:13px;color:var(--muted);text-align:center">
+  Don’t have an account? Request new access at
+  <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none;font-weight:500">
+    callbridge.2025@gmail.com
+  </a>
+</div>
+
     </div>
   </div>
-<!-- Request Access button -->
-<div style="margin-top:12px">
-  <button id="getAccessBtn" class="btn gray" style="width:100%">
-    Request Access
-  </button>
-  <div class="muted" style="font-size:12px;margin-top:6px;text-align:center">
-    Don’t have an account? Request new access here.
-  </div>
-</div>
 
-<!-- Contact Support -->
-<div style="margin-top:14px;font-size:13px;text-align:center;color:var(--muted)">
-  <div style="font-weight:600;color:#111827">Contact Support</div>
-  <div>📞 +1 (803) 346-6904</div>
-  <div>
-    📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
-      callbridge.2025@gmail.com
-    </a>
-  </div>
-</div>
-
-    
   <!-- Ringtone (tiny silent audio placeholder that browsers allow to preload) -->
   <audio id="ringtoneAudio" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" preload="auto"></audio>
 
@@ -596,6 +583,48 @@ function toggleHold(){
   }catch(e){ console.warn(e); }
 }
 
+/* ---------- speaker / handfree ---------- */
+window._speakerOn = false;
+
+async function toggleSpeaker() {
+  try {
+    if (!device || !device.audio) {
+      alert("Speaker toggle not available yet.");
+      return;
+    }
+
+    // Twilio Voice SDK v2 exposes available outputs and a speakerDevices controller
+    const outputsMap = device.audio.availableOutputDevices;   // Map<string, MediaDeviceInfo>
+    const speakerCtl  = device.audio.speakerDevices;          // controller with set()/clear()
+
+    if (!outputsMap || !speakerCtl) {
+      alert("Speaker control not supported in this browser.");
+      return;
+    }
+
+    if (!window._speakerOn) {
+      // Route audio to ALL available output devices (commonly the loudspeaker on Android Chrome/WebView)
+      const allOutputDevices = Array.from(outputsMap.values());
+      if (allOutputDevices.length === 0) {
+        alert("No audio output devices found.");
+        return;
+      }
+      await speakerCtl.set(allOutputDevices);
+      window._speakerOn = true;
+      $("speakerBtn").innerText = "Speaker Off";
+    } else {
+      // Clear routing override → go back to default (earpiece / system default)
+      await speakerCtl.clear();
+      window._speakerOn = false;
+      $("speakerBtn").innerText = "Speaker On";
+    }
+  } catch (e) {
+    console.warn("toggleSpeaker error:", e);
+    alert("Speaker toggle not supported on this device/browser.");
+  }
+}
+
+
 /* ---------- waveform ---------- */
 function renderWaveform(){
   const wrap = $("waveWrap");
@@ -704,17 +733,11 @@ $("holdBtn").addEventListener("click", toggleHold);
 $("answerBtn").addEventListener("click", answerIncoming);
 $("declineBtn").addEventListener("click", declineIncoming);
 $("logoutBtn").addEventListener("click", async ()=>{ await performLogout(); });
+$("speakerBtn").addEventListener("click", toggleSpeaker);
 
 /* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
 $("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown",(e)=>{ if(e.key==='Enter') performLogin(); });
-  $("getAccessBtn").addEventListener("click", () => {
-  window.open(
-    "https://docs.google.com/forms/d/e/1FAIpQLSdGnHzyl-AHN8q6VjRmqeqo9dgIQu5PkQTv-8RULqudUD0D5w/viewform?usp=header",
-    "_blank",
-    "noopener"
-  );
-});
 
 /* ---------- after login ---------- */
 async function postLoginInit(){
