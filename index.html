@@ -708,6 +708,13 @@ $("logoutBtn").addEventListener("click", async ()=>{ await performLogout(); });
 /* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
 $("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown",(e)=>{ if(e.key==='Enter') performLogin(); });
+  $("getAccessBtn").addEventListener("click", () => {
+  window.open(
+    "https://docs.google.com/forms/d/e/1FAIpQLSdGnHzyl-AHN8q6VjRmqeqo9dgIQu5PkQTv-8RULqudUD0D5w/viewform?usp=header",
+    "_blank",
+    "noopener"
+  );
+});
 
 /* ---------- after login ---------- */
 async function postLoginInit(){
