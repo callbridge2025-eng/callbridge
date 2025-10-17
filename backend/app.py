@@ -378,12 +378,6 @@ def voice():
 
             print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
 
-            # 🟡 NEW voicemail recording prompt
-            resp.say(
-                "Calling now. If voicemail answers, you'll hear a beep. "
-                "After the beep, record your message and hang up when finished.",
-                voice="alice"
-            )
 
             # Outbound with voicemail detection
             dial = Dial(callerId=caller_id, answer_on_bridge=True, timeout=40)
