@@ -56,7 +56,31 @@
     }
 
     .ringDot{width:72px;height:72px;border-radius:50%;background:var(--green);margin:10px auto;animation:pulse 1.2s infinite}
-    @media (max-width:900px){body{grid-template-columns:1fr;} }
+    @media (max-width: 900px){
+  html, body { height: 100%; overflow: hidden; }
+  /* Turn the main page into a horizontal strip */
+  body{
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    padding: 0;                 /* remove outer padding for full-bleed pages */
+    overflow-x: auto;           /* enable horizontal scroll */
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; /* smooth on Android/iOS */
+    background: var(--bg);
+  }
+  /* Each panel becomes a full-screen “page” */
+  .panel{
+    min-width: 100vw;           /* full viewport width */
+    height: 100vh;              /* full viewport height */
+    border-radius: 0;           /* flat edges for full-bleed */
+    box-shadow: none;           /* optional: remove shadow for app-like feel */
+    scroll-snap-align: start;   /* snap each page to the left edge */
+    padding: 16px;              /* inner padding */
+  }
+}
+
 
     /* Login modal overrides (keeps the same card style) */
     #loginModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10000;align-items:center;justify-content:center}
@@ -72,6 +96,7 @@
       <h2>Call Bridge</h2>
       <div class="muted">Tech Talk Titans</div>
     </div>
+
 
     <div style="text-align:center">
       <div class="muted">Your Virtual Number</div>
@@ -143,7 +168,16 @@
     <div class="profile-row"><div class="muted">Status</div><div id="pStatus">Loading...</div></div>
     <div class="profile-row"><div class="muted">Valid Until</div><div id="pExpiry">Loading...</div></div>
     <div style="margin-top:14px"><button id="logoutBtn" class="btn hang" style="width:100%">Logout</button></div>
+
+  <div style="margin-top:12px;font-size:13px;text-align:center;color:var(--muted)">
+  <div style="font-weight:600;color:#111827">Contact Support</div>
+  <div>📞 +1(803)346-6904</div>
+  <div>
+    📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
+      callbridge.2025@gmail.com
+    </a>
   </div>
+</div>
 
   <!-- Incoming Call Modal -->
   <div id="incomingModal" style="display:none;align-items:center;justify-content:center" >
@@ -166,16 +200,36 @@
       <input id="loginEmail" placeholder="Email" type="email" />
       <input id="loginPassword" placeholder="Password" type="password" />
       <div style="display:flex;gap:10px;margin-top:12px">
-        <button id="loginBtn" class="btn call" style="flex:1">Login</button>
+        <button id="loginBtn" class="btn call" style="flex:1" type="button">Login</button>
         <button id="loginCancelBtn" class="btn gray" style="flex:1;display:none">Cancel</button>
       </div>
       <div id="loginError" class="muted" style="color:var(--danger);margin-top:10px;display:none"></div>
-      <div style="margin-top:12px;font-size:13px;color:var(--muted);text-align:center">
-  Don’t have an account? Request new access at
-  <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none;font-weight:500">
-    callbridge.2025@gmail.com
+      <div style="margin-top:12px">
+  <a
+    id="getAccessLink"
+    class="btn gray"
+    href="https://docs.google.com/forms/d/e/1FAIpQLSdGnHzyl-AHN8q6VjRmqeqo9dgIQu5PkQTv-8RULqudUD0D5w/viewform?usp=header"
+    target="_blank"
+    rel="noopener"
+    style="display:block;width:100%;text-align:center"
+  >
+    Request Access
   </a>
+  <div class="muted" style="font-size:12px;margin-top:6px;text-align:center">
+    Don’t have an account? Request new access here.
+  </div>
 </div>
+
+<div style="margin-top:14px;font-size:13px;text-align:center;color:var(--muted)">
+  <div style="font-weight:600;color:#111827">Contact Support</div>
+  <div>📞 +1(803)346-6904</div>
+  <div>
+    📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
+      callbridge.2025@gmail.com
+    </a>
+  </div>
+</div>
+
 
     </div>
   </div>
@@ -738,6 +792,7 @@ $("speakerBtn").addEventListener("click", toggleSpeaker);
 /* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
 $("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown",(e)=>{ if(e.key==='Enter') performLogin(); });
+
 
 /* ---------- after login ---------- */
 async function postLoginInit(){
