@@ -21,6 +21,10 @@ print("HAS_FILE_PATH:", bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS")))
 @app.get("/health")
 def health():
     return {"status": "ok"}
+@app.before_request
+def init_firebase_once():
+    if request.method != "OPTIONS" and request.path != "/health":
+        ensure_firebase()
 
 
 # ---------- Firebase Admin lazy init ----------
@@ -157,6 +161,73 @@ def profile():
     except Exception:
         traceback.print_exc()
         return jsonify({"error":"Internal server error"}), 500
+
+@app.get("/")
+def home():
+    if not firebase_inited:
+        return jsonify({"error":"Firebase not initialized (check credentials envs)"}), 500
+    return jsonify({"message":"Backend is running with Firebase/Firestore"})
+
+@app.post("/profile")
+def profile():
+    if not firebase_inited:
+        return jsonify({"error":"Firebase not initialized (check credentials envs)"}), 500
+    try:
+        data = request.get_json(force=True) if request.is_json else {}
+        ...
+
+@app.get("/calls")
+@require_user
+def get_calls():
+    if not firebase_inited:
+        return jsonify({"error":"Firebase not initialized (check credentials envs)"}), 500
+    try:
+        ...
+
+@app.post("/save-call")
+@require_user
+def save_call():
+    if not firebase_inited:
+        return jsonify({"error":"Firebase not initialized (check credentials envs)"}), 500
+    try:
+        ...
+
+@app.post("/twilio-token")
+@require_user
+def twilio_token():
+    if not firebase_inited:
+        return jsonify({"error":"Firebase not initialized (check credentials envs)"}), 500
+    try:
+        ...
+
+@app.post("/voice")
+def voice():
+    if not firebase_inited:
+        return str(VoiceResponse()), 500, {"Content-Type": "application/xml"}
+    try:
+        ...
+
+@app.post("/client-status")
+def client_status():
+    if not firebase_inited:
+        return ("", 204)
+    try:
+        ...
+
+@app.post("/dial-action")
+def dial_action():
+    if not firebase_inited:
+        return str(VoiceResponse()), 200, {"Content-Type":"application/xml"}
+    try:
+        ...
+
+@app.post("/vm-screen")
+def vm_screen():
+    if not firebase_inited:
+        return str(VoiceResponse()), 200, {"Content-Type":"application/xml"}
+    try:
+        ...
+
 
 # Calls history (now reads Firestore)
 @app.get("/calls")
