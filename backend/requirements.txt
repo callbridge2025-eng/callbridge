@@ -1,12 +1,13 @@
 Flask==3.0.3
 Flask-Cors==4.0.0
-gspread==6.1.2
-google-auth==2.33.0
-google-auth-oauthlib==1.2.1
-google-auth-httplib2==0.2.0
-twilio==9.2.3
 gunicorn==23.0.0
-phonenumbers
 
+# Firebase + Firestore
+firebase-admin==6.6.0
+google-cloud-firestore==2.16.0
 
+# Twilio (kept while you migrate carriers)
+twilio==9.2.3
 
+# Phone utils
+phonenumbers==8.13.45
