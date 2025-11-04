@@ -1,13 +1,9 @@
-Flask==3.0.3
-Flask-Cors==4.0.0
-gunicorn==23.0.0
+Flask>=3.0,<3.1
+Flask-Cors>=4.0,<5
+gunicorn>=21,<24
 
-# Firebase + Firestore
-firebase-admin==6.6.0
-google-cloud-firestore==2.16.0
+firebase-admin>=6.5,<7
+google-cloud-firestore>=2.15,<3
 
-# Twilio (kept while you migrate carriers)
-twilio==9.2.3
-
-# Phone utils
-phonenumbers==8.13.45
+twilio>=9,<10
+phonenumbers>=8,<9
