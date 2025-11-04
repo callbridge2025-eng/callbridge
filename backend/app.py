@@ -16,20 +16,28 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # ---------- Firebase Admin init ----------
+# ---------- Firebase Admin init ----------
 if not firebase_admin._apps:
     cred = None
-    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
-        data = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
-        tmp.write(json.dumps(data).encode()); tmp.flush()
-        cred = credentials.Certificate(tmp.name)
+    creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # path to Secret File
+    if creds_json:
+        data = json.loads(creds_json)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            tmp.write(json.dumps(data).encode())
+            tmp.flush()
+            cred = credentials.Certificate(tmp.name)
+    elif creds_path and os.path.exists(creds_path):
+        cred = credentials.Certificate(creds_path)
     else:
-        cred = credentials.ApplicationDefault()
+        raise RuntimeError(
+            "Firebase creds missing: set GOOGLE_APPLICATION_CREDENTIALS_JSON (preferred) "
+            "or GOOGLE_APPLICATION_CREDENTIALS with the service-account file path."
+        )
+
     firebase_admin.initialize_app(cred, {
         "projectId": os.getenv("FIREBASE_PROJECT_ID")
     })
-
-db = firestore.client()
 
 # ---------- Helpers ----------
 def _ok_cors():
