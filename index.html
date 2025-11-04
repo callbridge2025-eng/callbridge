@@ -5,94 +5,162 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Call Bridge — Tech Talk Titans</title>
 
-  <!-- Twilio Voice SDK v2 -->
+  <!-- Twilio Voice SDK v2 (blocking load so window.Twilio is available) -->
   <script src="https://unpkg.com/@twilio/voice-sdk@2.16.0/dist/twilio.min.js"></script>
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-
   <style>
-    :root{ --bg:#f4f6f9; --card:#ffffff; --muted:#6b7280; --accent:#2563eb; --green:#10b981; --danger:#ef4444; --shadow:0 8px 30px rgba(2,6,23,0.08); }
+    :root{
+      --bg:#f4f6f9; --card:#ffffff; --muted:#6b7280; --accent:#2563eb; --green:#10b981;
+      --danger:#ef4444; --shadow: 0 8px 30px rgba(2,6,23,0.08);
+    }
     *{box-sizing:border-box;font-family:Inter,Segoe UI,Arial;}
     html,body{height:100%;margin:0;background:var(--bg)}
     body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;padding:18px}
+
     .panel{background:var(--card);border-radius:12px;padding:18px;box-shadow:var(--shadow);height:calc(100vh - 36px);overflow:auto}
-    h2{margin:0 0 8px 0} .muted{color:var(--muted);font-size:13px}
-    #left{display:flex;flex-direction:column;gap:12px;align-items:center}
-    #callerNumber{font-weight:700;color:#111827;} input#dialInput{width:220px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;font-size:16px}
+    h2{margin:0 0 8px 0}
+    .muted{color:var(--muted);font-size:13px}
+
+    /* Left - Dialpad / Active Call */
+    #left { display:flex;flex-direction:column; gap:12px; align-items:center }
+    #callerNumber { font-weight:700; color:#111827; }
+    input#dialInput { width:220px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;font-size:16px }
+
     .key-row{display:flex;gap:8px;margin-top:8px}
     .key{width:64px;height:64px;border-radius:10px;border:1px solid #e6e9ef;background:#fafbff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
     .key.primary{background:var(--accent);color:#fff;border:none}
+
     .controls{display:flex;gap:10px;margin-top:12px}
     .btn{padding:10px 14px;border-radius:10px;border:none;cursor:pointer;color:#fff}
     .btn.call{background:var(--green)} .btn.hang{background:var(--danger)} .btn.gray{background:#374151}
+
+    /* active call controls */
     #activeArea{display:none;flex-direction:column;align-items:center;gap:8px}
     #waveWrap{display:flex;gap:6px;align-items:flex-end;height:40px}
+
+    /* middle - history */
     #historyList{display:flex;flex-direction:column;gap:10px}
     .history-item{padding:10px;border-radius:10px;border:1px solid #eef2ff;background:#fff;display:flex;justify-content:space-between;align-items:center}
     .badge{padding:6px 8px;border-radius:999px;background:#f1f5f9;font-size:12px;color:var(--muted)}
+
+    /* right - profile */
     .profile-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #f3f4f6}
+
+    /* incoming modal */
     #incomingModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:9999;align-items:center;justify-content:center}
     .modalCard{background:white;padding:22px;border-radius:12px;width:360px;text-align:center;box-shadow:0 12px 40px rgba(2,6,23,0.12)}
     .modalBtns{display:flex;gap:12px;justify-content:center;margin-top:12px}
-    @keyframes pulse{0%{transform:scale(0.95);opacity:0.8}50%{transform:scale(1.08);opacity:1}100%{transform:scale(0.95);opacity:0.8}}
+
+    @keyframes pulse {
+      0%{transform:scale(0.95);opacity:0.8}50%{transform:scale(1.08);opacity:1}100%{transform:scale(0.95);opacity:0.8}
+    }
+
     .ringDot{width:72px;height:72px;border-radius:50%;background:var(--green);margin:10px auto;animation:pulse 1.2s infinite}
     @media (max-width: 900px){
-      html, body { height: 100%; overflow: hidden; }
-      body{display:flex;flex-direction:row;gap:0;padding:0;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;background:var(--bg)}
-      .panel{min-width:100vw;height:100vh;border-radius:0;box-shadow:none;scroll-snap-align:start;padding:16px}
-    }
+  html, body { height: 100%; overflow: hidden; }
+  /* Turn the main page into a horizontal strip */
+  body{
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    padding: 0;                 /* remove outer padding for full-bleed pages */
+    overflow-x: auto;           /* enable horizontal scroll */
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; /* smooth on Android/iOS */
+    background: var(--bg);
+  }
+  /* Each panel becomes a full-screen “page” */
+  .panel{
+    min-width: 100vw;           /* full viewport width */
+    height: 100vh;              /* full viewport height */
+    border-radius: 0;           /* flat edges for full-bleed */
+    box-shadow: none;           /* optional: remove shadow for app-like feel */
+    scroll-snap-align: start;   /* snap each page to the left edge */
+    padding: 16px;              /* inner padding */
+  }
+}
+
+
+    /* Login modal overrides (keeps the same card style) */
     #loginModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10000;align-items:center;justify-content:center}
-    #loginModal .modalCard{width:360px;text-align:left;}
-    #loginModal input{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;margin-top:8px;}
+    #loginModal .modalCard { width:360px;text-align:left; }
+    #loginModal input { width:100%; padding:10px; border-radius:8px; border:1px solid #e6e9ef; margin-top:8px; }
   </style>
 </head>
 <body>
 
-  <!-- LEFT -->
+  <!-- LEFT: Dialpad / Active Call -->
   <div id="left" class="panel">
     <div style="width:100%;display:flex;justify-content:space-between;align-items:center">
-      <h2>Call Bridge</h2><div class="muted">Tech Talk Titans</div>
+      <h2>Call Bridge</h2>
+      <div class="muted">Tech Talk Titans</div>
     </div>
+
+
     <div style="text-align:center">
       <div class="muted">Your Virtual Number</div>
       <div id="callerNumber">Loading...</div>
     </div>
 
+    <!-- Dialpad -->
     <div id="dialpadArea" style="display:flex;flex-direction:column;align-items:center;margin-top:6px">
       <input id="dialInput" type="tel" inputmode="tel" pattern="^\+?\d[\d\s\-()]*$" placeholder="+1..." />
       <div style="margin-top:12px">
-        <div class="key-row"><button class="key" data-key="1">1</button><button class="key" data-key="2">2</button><button class="key" data-key="3">3</button></div>
-        <div class="key-row"><button class="key" data-key="4">4</button><button class="key" data-key="5">5</button><button class="key" data-key="6">6</button></div>
-        <div class="key-row"><button class="key" data-key="7">7</button><button class="key" data-key="8">8</button><button class="key" data-key="9">9</button></div>
-        <div class="key-row"><button class="key" data-key="+">+</button><button class="key" data-key="0">0</button><button class="key" data-key="#">#</button></div>
+        <div class="key-row">
+          <button class="key" data-key="1">1</button>
+          <button class="key" data-key="2">2</button>
+          <button class="key" data-key="3">3</button>
+        </div>
+        <div class="key-row">
+          <button class="key" data-key="4">4</button>
+          <button class="key" data-key="5">5</button>
+          <button class="key" data-key="6">6</button>
+        </div>
+        <div class="key-row">
+          <button class="key" data-key="7">7</button>
+          <button class="key" data-key="8">8</button>
+          <button class="key" data-key="9">9</button>
+        </div>
+        <div class="key-row">
+          <button class="key" data-key="+">+</button>
+          <button class="key" data-key="0">0</button>
+          <button class="key" data-key="#">#</button>
+        </div>
       </div>
-      <div class="controls" style="margin-top:12px"><button id="startCallBtn" class="btn call">📞 Call</button></div>
+
+      <div class="controls" style="margin-top:12px">
+        <button id="startCallBtn" class="btn call">📞 Call</button>
+      </div>
     </div>
 
+    <!-- Active call area -->
     <div id="activeArea">
       <div id="activeLabel" style="font-weight:700">In Call</div>
       <div id="callTimer" class="muted">00:00</div>
       <div id="waveWrap"></div>
-      <div class="controls" style="margin-top:10px">
-        <button id="muteBtn" class="btn gray">Mute</button>
-        <button id="holdBtn" class="btn gray">Hold</button>
-        <button id="speakerBtn" class="btn gray">Speaker On</button>
-        <button id="hangupBtn" class="btn hang" style="display:none">✖ Hangup</button>
+     <div class="controls" style="margin-top:10px">
+  <button id="muteBtn" class="btn gray">Mute</button>
+  <button id="holdBtn" class="btn gray">Hold</button>
+  <button id="speakerBtn" class="btn gray">Speaker On</button>
+  <button id="hangupBtn" class="btn hang" style="display:none">✖ Hangup</button>
       </div>
     </div>
   </div>
 
-  <!-- MIDDLE -->
+  <!-- MIDDLE: Call History -->
   <div id="middle" class="panel">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>Call History</h2><div class="muted">Latest</div>
+      <h2>Call History</h2>
+      <div class="muted">Latest</div>
     </div>
-    <div id="historyList" style="margin-top:12px"><div class="muted">Loading call history...</div></div>
+
+    <div id="historyList" style="margin-top:12px">
+      <div class="muted">Loading call history...</div>
+    </div>
   </div>
 
-  <!-- RIGHT -->
+  <!-- RIGHT: Profile -->
   <div id="right" class="panel">
     <h2>My Profile</h2>
     <div class="profile-row"><div class="muted">Email</div><div id="pEmail">Loading...</div></div>
@@ -101,15 +169,18 @@
     <div class="profile-row"><div class="muted">Valid Until</div><div id="pExpiry">Loading...</div></div>
     <div style="margin-top:14px"><button id="logoutBtn" class="btn hang" style="width:100%">Logout</button></div>
 
-    <div style="margin-top:12px;font-size:13px;text-align:center;color:var(--muted)">
-      <div style="font-weight:600;color:#111827">Contact Support</div>
-      <div>📞 +1(803)346-6904</div>
-      <div>📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">callbridge.2025@gmail.com</a></div>
-    </div>
+  <div style="margin-top:12px;font-size:13px;text-align:center;color:var(--muted)">
+  <div style="font-weight:600;color:#111827">Contact Support</div>
+  <div>📞 +1(803)346-6904</div>
+  <div>
+    📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
+      callbridge.2025@gmail.com
+    </a>
   </div>
+</div>
 
   <!-- Incoming Call Modal -->
-  <div id="incomingModal" style="display:none;align-items:center;justify-content:center">
+  <div id="incomingModal" style="display:none;align-items:center;justify-content:center" >
     <div class="modalCard">
       <div style="font-weight:700;font-size:18px">Incoming Call</div>
       <div id="incomingFrom" class="muted" style="margin-top:6px">From: —</div>
@@ -125,153 +196,188 @@
   <div id="loginModal" style="display:none;align-items:center;justify-content:center">
     <div class="modalCard">
       <div style="font-weight:700;font-size:18px">Sign in</div>
-      <div class="muted" style="margin-top:6px">Use your email & password. Verify your email to enable calling.</div>
+      <div class="muted" style="margin-top:6px">Sign in with the email & password assigned to you.</div>
       <input id="loginEmail" placeholder="Email" type="email" />
       <input id="loginPassword" placeholder="Password" type="password" />
       <div style="display:flex;gap:10px;margin-top:12px">
         <button id="loginBtn" class="btn call" style="flex:1" type="button">Login</button>
-        <button id="sendVerifyBtn" class="btn gray" style="flex:1" type="button">Send Verify Email</button>
+        <button id="loginCancelBtn" class="btn gray" style="flex:1;display:none">Cancel</button>
       </div>
       <div id="loginError" class="muted" style="color:var(--danger);margin-top:10px;display:none"></div>
+      <div style="margin-top:12px">
+  <a
+    id="getAccessLink"
+    class="btn gray"
+    href="https://docs.google.com/forms/d/e/1FAIpQLSdGnHzyl-AHN8q6VjRmqeqo9dgIQu5PkQTv-8RULqudUD0D5w/viewform?usp=header"
+    target="_blank"
+    rel="noopener"
+    style="display:block;width:100%;text-align:center"
+  >
+    Request Access
+  </a>
+  <div class="muted" style="font-size:12px;margin-top:6px;text-align:center">
+    Don’t have an account? Request new access here.
+  </div>
+</div>
 
-      <div style="margin-top:14px;font-size:13px;text-align:center;color:var(--muted)">
-        <div style="font-weight:600;color:#111827">Contact Support</div>
-        <div>📞 +1(803)346-6904</div>
-        <div>📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">callbridge.2025@gmail.com</a></div>
-      </div>
+<div style="margin-top:14px;font-size:13px;text-align:center;color:var(--muted)">
+  <div style="font-weight:600;color:#111827">Contact Support</div>
+  <div>📞 +1(803)346-6904</div>
+  <div>
+    📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
+      callbridge.2025@gmail.com
+    </a>
+  </div>
+</div>
+
+
     </div>
   </div>
 
-  <!-- Ringtone -->
+  <!-- Ringtone (tiny silent audio placeholder that browsers allow to preload) -->
   <audio id="ringtoneAudio" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" preload="auto"></audio>
 
 <script>
 /* ================= CONFIG ================= */
 const API_BASE = "https://callbridge.onrender.com";
 
-/* Firebase config — REPLACE with your project values */
-firebase.initializeApp({
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID"
-});
-const auth = firebase.auth();
-
 /* small helpers */
 const $ = id => document.getElementById(id);
 const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
-
-/* phone display formatter */
+  /* phone display formatter: ensures leading + when appropriate */
+/* phone display formatter:
+   - US (+1XXXXXXXXXX) -> (XXX) XXX-XXXX
+   - Plain 10 digits   -> assume US, show pretty
+   - Other lengths     -> ensure leading + and show as-is
+*/
 function showE164(n){
   if (n == null) return '—';
   const raw = String(n).trim();
   if (raw === '') return '—';
+
+  // Normalize to something with + for display
   let e164 = raw;
   if (!raw.startsWith('+')) {
-    if (/^\d{10}$/.test(raw)) e164 = `+1${raw}`;
-    else if (/^\d{11,15}$/.test(raw)) e164 = `+${raw}`;
+    if (/^\d{10}$/.test(raw)) e164 = `+1${raw}`;        // US 10-digit
+    else if (/^\d{11,15}$/.test(raw)) e164 = `+${raw}`; // long digits
   }
+
+  // Pretty print US numbers
   const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
   if (m) return `(${m[1]}) ${m[2]}-${m[3]}`;
+
+  // Non-US: just show normalized E.164
   return e164;
 }
 
+
 /* app state */
-let device = null, inCall = false, activeConn = null, incomingConn = null;
-let currentUser = null, assignedNumber = ""; let callStartTs = 0;
-let timerInterval = null, wfRaf = null, historyPollInterval = null, localStream = null;
+let device = null;
+let inCall = false;  // <-- NEW
+let activeConn = null;
+let incomingConn = null;
+let currentUser = null;
+let assignedNumber = "";
+let callStartTs = 0;
+let timerInterval = null;
+let wfRaf = null;
+let historyPollInterval = null;
+let localStream = null;
 
-/* auth headers from Firebase ID token */
-async function authHeaders(){
-  const u = auth.currentUser;
-  if(!u) return {};
-  const t = await u.getIdToken();
-  return { "Authorization": "Bearer " + t };
+/* auth helpers */
+function getAuthToken(){ return localStorage.getItem("auth_token"); }
+function setAuthToken(t){ if(t) localStorage.setItem("auth_token", t); else localStorage.removeItem("auth_token"); }
+function authHeaders(){ const t = getAuthToken(); return t ? { "Authorization": "Bearer " + t } : {}; }
+
+/* ---------- mic permission ---------- */
+async function ensureMic() {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    alert("Microphone APIs unavailable in this browser.");
+    return false;
+  }
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    localStream = s;
+    console.log("Microphone available");
+    return true;
+  } catch (e) {
+    console.warn("Mic permission denied or failed", e);
+    return false;
+  }
 }
 
-/* mic permission */
-async function ensureMic(){
-  if (!navigator.mediaDevices?.getUserMedia) { alert("Microphone APIs unavailable."); return false; }
-  try{ localStream = await navigator.mediaDevices.getUserMedia({ audio:true }); return true; }
-  catch{ return false; }
-}
-
-/* Login modal */
+/* ---------- login / logout ---------- */
 function showLoginModal(){ $("loginModal").style.display = "flex"; }
 function hideLoginModal(){ $("loginModal").style.display = "none"; }
 
-/* Firebase login */
 async function performLogin(){
   $("loginError").style.display = "none";
   const email = $("loginEmail").value.trim();
   const password = $("loginPassword").value;
   if(!email || !password){ $("loginError").innerText="Enter email & password"; $("loginError").style.display="block"; return; }
   try{
-    await auth.signInWithEmailAndPassword(email, password);
-    await auth.currentUser.reload();
-    if(!auth.currentUser.emailVerified){
-      $("loginError").innerText = "Verification email sent if not already. Please verify your email.";
-      $("loginError").style.display = "block";
-      try { await auth.currentUser.sendEmailVerification(); } catch {}
-      return;
-    }
-    hideLoginModal();
-    await postLoginInit();
-  }catch(e){
-    $("loginError").innerText = e.message || "Login failed";
-    $("loginError").style.display = "block";
-  }
-}
+    const res = await fetch(`${API_BASE}/login`, {
+      method: "POST", headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    if(!res.ok){ const txt = await res.text(); $("loginError").innerText = txt || "Login failed"; $("loginError").style.display="block"; return; }
+    const data = await res.json();
+    if(!data || !data.token){ $("loginError").innerText="Invalid server response"; $("loginError").style.display="block"; return; }
 
-async function sendVerify(){
-  try{
-    const email = $("loginEmail").value.trim();
-    const password = $("loginPassword").value;
-    if(!auth.currentUser){
-      if(!email || !password){ $("loginError").innerText="Enter email & password first"; $("loginError").style.display="block"; return; }
-      await auth.signInWithEmailAndPassword(email, password);
-    }
-    await auth.currentUser.sendEmailVerification();
-    $("loginError").innerText = "Verification email sent. Please check your inbox.";
-    $("loginError").style.display = "block";
-  }catch(e){
-    $("loginError").innerText = e.message || "Failed to send verification email";
-    $("loginError").style.display = "block";
+    setAuthToken(data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    currentUser = data.user;
+    hideLoginModal();
+
+    // request mic permission (user gesture)
+    const micOk = await ensureMic();
+    if (!micOk) alert("Please allow microphone access to use calls.");
+
+    // after login init
+    await postLoginInit();
+  } catch(e){
+    console.error("performLogin error", e);
+    $("loginError").innerText="Network error"; $("loginError").style.display="block";
   }
 }
 
 async function performLogout(){
-  try{ await auth.signOut(); } catch {}
+  setAuthToken(null);
+  localStorage.removeItem("user");
   currentUser = null;
   if (historyPollInterval) clearInterval(historyPollInterval);
-  try { if (device) device.destroy(); } catch {}
+  try { if (device) device.destroy(); } catch (e) {}
   device = null;
   showLoginModal();
 }
 
-/* save call to backend */
+/* ---------- call-save ---------- */
 async function remoteSaveCall(payload){
+ const emailQS = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+const ep = `${API_BASE}/save-call${emailQS}`;
+
   try{
-    const res = await fetch(`${API_BASE}/save-call`, {
+    const res = await fetch(ep, {
       method: "POST",
-      headers: Object.assign({ "Content-Type":"application/json" }, await authHeaders()),
+      headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
       body: JSON.stringify(payload)
     });
-    if(!res.ok) console.warn("Save failed", res.status);
-  }catch(e){ console.warn("Save call error", e); }
+    if(res.ok) console.log("Saved call to", ep);
+    else console.warn("Save failed", res.status);
+  }catch(e){
+    console.warn("Save call error", e);
+  }
 }
 
-/* profile */
+/* ---------- profile ---------- */
 async function loadProfile(){
   try{
-    const email = auth.currentUser?.email;
-    if(!email) return;
+    const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    if(!savedUser.email) return;
     const res = await fetch(`${API_BASE}/profile`, {
-      method: "POST",
-      headers: { "Content-Type":"application/json" },
-      body: JSON.stringify({ email })
+      method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email: savedUser.email })
     });
-    if(!res.ok) return;
+    if(!res.ok){ console.warn("Profile fetch failed", res.status); return; }
     const p = await res.json();
     currentUser = p;
     setText("pEmail", p.email || "—");
@@ -283,63 +389,97 @@ async function loadProfile(){
   }catch(e){ console.error("loadProfile error", e); }
 }
 
-/* Twilio device init */
+/* ---------- safe Twilio init (waits for SDK if needed) ---------- */
 async function safeInitTwilioDevice(tokenJson){
+  // tokenJson is object { token: "...", callerId: "..." }
   try{
+    // wait up to ~5s for Twilio to be defined
     let tries = 0;
     while ((typeof Twilio === "undefined" || !Twilio.Device) && tries < 10){
-      await new Promise(r => setTimeout(r, 500)); tries++;
+      await new Promise(r => setTimeout(r, 500));
+      tries++;
     }
-    if (!tokenJson?.token || !Twilio?.Device) return;
+    if (typeof Twilio === "undefined" || !Twilio.Device){
+      console.error("Twilio SDK failed to load.");
+      return;
+    }
 
-    assignedNumber = tokenJson.callerId || assignedNumber; setText("callerNumber", assignedNumber || "—");
-    try { if(device){ device.destroy(); device = null; } } catch(e){}
+    if (!tokenJson || !tokenJson.token){
+      console.error("No token provided for Twilio device.");
+      return;
+    }
 
-    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug:false });
-    device.register();
+    assignedNumber = tokenJson.callerId || assignedNumber;
+    setText("callerNumber", assignedNumber || "—");
 
+    try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
+
+    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug: false });
+console.log("Twilio.Device (v2) created");
+device.register(); // <-- IMPORTANT
+
+
+    device.on("ready", () => console.log("✅ Twilio Device ready"));
+    device.on("error", (err) => console.error("Twilio Device error:", err));
+
+    // incoming (do NOT auto-accept)
     device.on("incoming", (connection) => {
       incomingConn = connection;
       $("incomingFrom").innerText = "From: " + showE164(connection.parameters?.From || "");
       $("incomingModal").style.display = "flex";
-      const rt = $("ringtoneAudio"); try { rt.currentTime=0; rt.loop=true; rt.play().catch(()=>{}); } catch {}
+      try {
+        const ringtone = $("ringtoneAudio");
+        ringtone.currentTime = 0; ringtone.loop = true;
+        ringtone.play().catch(e => console.warn("Ringtone blocked", e));
+      } catch(e){ console.warn("Ringtone play error", e); }
     });
-  }catch(e){ console.error("safeInitTwilioDevice error", e); }
+
+    device.on("disconnect", (c) => {
+      console.log("Device disconnect event", c);
+    });
+
+  }catch(e){
+    console.error("safeInitTwilioDevice error", e);
+  }
 }
 
+/* ---------- init device by requesting token from server ---------- */
 async function initTwilioDevice(){
   try{
-    const res = await fetch(`${API_BASE}/twilio-token`, {
-      method: "POST",
-      headers: Object.assign({ "Content-Type":"application/json" }, await authHeaders()),
-      body: JSON.stringify({})
+    if(!currentUser || !currentUser.id){ console.warn("No user for twilio init"); return; }
+    const resp = await fetch(`${API_BASE}/twilio-token`, {
+      method: "POST", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()), body: JSON.stringify({ user_id: currentUser.id })
     });
-    if(!res.ok){ console.error("/twilio-token", res.status); return; }
-    const json = await res.json();
+    if(!resp.ok){ console.error("/twilio-token returned", resp.status); return; }
+    const json = await resp.json();
     await safeInitTwilioDevice(json);
   }catch(e){ console.error("initTwilioDevice error", e); }
 }
 
-/* outgoing call */
+/* ---------- outgoing call ---------- */
 async function startCall(){
   const number = $("dialInput").value.trim();
   if(!number) return alert("Enter a number to call.");
-  if(!auth.currentUser){ showLoginModal(); return; }
-  await auth.currentUser.reload();
-  if(!auth.currentUser.emailVerified){ alert("Verify your email first."); return; }
 
-  if(!localStream){ const ok = await ensureMic(); if(!ok) return alert("Allow microphone to place calls."); }
-  if(!device){ await initTwilioDevice(); if(!device) return alert("Twilio device init failed."); }
+  if(!localStream){
+    const ok = await ensureMic();
+    if(!ok) return alert("Allow microphone to place calls.");
+  }
+  if(!device){
+    await initTwilioDevice();
+    if(!device) return alert("Twilio device initialization failed.");
+  }
 
   try{
     await remoteSaveCall({
-      user_email: auth.currentUser.email,
-      call_type: "outgoing",
-      from_number: assignedNumber || "",
-      to_number: number,
-      status: "initiated",
-      created_at: new Date().toISOString()
-    });
+  user_email: currentUser && currentUser.email,
+  call_type: "outgoing",
+  from_number: assignedNumber || "",
+  to_number: number,
+  status: "initiated",
+  created_at: new Date().toISOString()
+});
+
 
     const conn = device.connect({ params: { To: number } });
     activeConn = conn || null;
@@ -347,65 +487,79 @@ async function startCall(){
     $("dialpadArea").style.display = "none";
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
-    inCall = true; setText("activeLabel", showE164(number) || "In Call");
-    startTimer(); renderWaveform();
-    try{ const rt = $("ringtoneAudio"); rt.pause(); rt.currentTime=0; } catch{}
-
-    if(activeConn?.on){
+    inCall = true;   // <-- NEW
+    setText("activeLabel", showE164(number) || "In Call");
+    startTimer();
+    renderWaveform();
+    try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
+    if(activeConn && typeof activeConn.on === 'function'){
       activeConn.on("accept", ()=>{ callStartTs = Date.now(); });
       activeConn.on("disconnect", async ()=>{
         const duration = Math.max(0, Math.floor((Date.now() - callStartTs)/1000));
         await remoteSaveCall({
-          user_email: auth.currentUser.email,
-          call_type: "outgoing",
-          from_number: assignedNumber || "",
-          to_number: number,
-          status: "completed",
-          created_at: new Date().toISOString(),
-          duration
-        });
+  user_email: currentUser && currentUser.email,
+  call_type: "outgoing",
+  from_number: assignedNumber || "",
+  to_number: number,
+  status: "completed",
+  created_at: new Date().toISOString(),
+  duration
+});
+
         stopCallUI(); refreshHistory();
       });
-      activeConn.on("error", ()=>{ stopCallUI(); });
+      activeConn.on("error", (err)=>{ console.error("connection error", err); stopCallUI(); });
     }
-  }catch{ alert("Failed to start call."); }
+  }catch(e){ console.error("startCall error", e); alert("Failed to start call."); }
 }
 
-/* incoming */
+/* ---------- answer/decline incoming ---------- */
 async function answerIncoming(){
   if(!incomingConn) return;
   try{
-    try{ const rt=$("ringtoneAudio"); rt.pause(); rt.currentTime=0; }catch{}
-    $("incomingModal").style.display="none";
-    if(!localStream){ const ok = await ensureMic(); if(!ok){ alert("Allow microphone to answer."); return; } }
-    incomingConn.accept?.(); activeConn = incomingConn; incomingConn = null;
+    try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
+    $("incomingModal").style.display = "none";
 
-    $("dialpadArea").style.display="none"; $("activeArea").style.display="flex";
-    $("hangupBtn").style.display="inline-block"; inCall = true;
+    if(!localStream){
+      const ok = await ensureMic();
+      if(!ok){ alert("Allow microphone to answer."); return; }
+    }
+
+    if(typeof incomingConn.accept === 'function') incomingConn.accept();
+    else if(typeof incomingConn.acceptConnection === 'function') incomingConn.acceptConnection();
+    activeConn = incomingConn; incomingConn = null;
+
+    $("dialpadArea").style.display = "none";
+    $("activeArea").style.display = "flex";
+    $("hangupBtn").style.display = "inline-block";
+    inCall = true;   // <-- NEW
     setText("activeLabel", showE164(activeConn.parameters?.From || "") || "In Call");
-    startTimer(); renderWaveform();
+    startTimer();
+    renderWaveform();
 
     await remoteSaveCall({
-      user_email: auth.currentUser.email,
-      call_type: "incoming",
-      from_number: activeConn.parameters?.From || "",
-      to_number: assignedNumber || "",
-      status: "answered",
-      created_at: new Date().toISOString()
-    });
+  user_email: currentUser && currentUser.email,
+  call_type: "incoming",
+  from_number: activeConn.parameters?.From || "",
+  to_number: assignedNumber || "",
+  status: "answered",
+  created_at: new Date().toISOString()
+});
 
-    if(activeConn?.on){
+
+    if(activeConn && typeof activeConn.on === 'function'){
       activeConn.on("disconnect", async ()=>{
         const duration = Math.max(0, Math.floor((Date.now() - callStartTs)/1000));
         await remoteSaveCall({
-          user_email: auth.currentUser.email,
-          call_type: "incoming",
-          from_number: activeConn.parameters?.From || "",
-          to_number: assignedNumber || "",
-          status: "completed",
-          created_at: new Date().toISOString(),
-          duration
-        });
+  user_email: currentUser && currentUser.email,
+  call_type: "incoming",
+  from_number: activeConn.parameters?.From || "",
+  to_number: assignedNumber || "",
+  status: "completed",
+  created_at: new Date().toISOString(),
+  duration
+});
+
         stopCallUI(); refreshHistory();
       });
     }
@@ -414,93 +568,217 @@ async function answerIncoming(){
 
 async function declineIncoming(){
   if(!incomingConn) return;
-  try{ const rt=$("ringtoneAudio"); rt.pause(); rt.currentTime=0; }catch{}
-  incomingConn.reject?.(); $("incomingModal").style.display="none";
+  try{ try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){} 
+    if(typeof incomingConn.reject === 'function') incomingConn.reject();
+    else if(typeof incomingConn.rejectConnection === 'function') incomingConn.rejectConnection();
+  }catch(e){ console.warn("declineIncoming error", e); }
+  $("incomingModal").style.display = "none";
   await remoteSaveCall({
-    user_email: auth.currentUser?.email || "",
-    call_type: "incoming",
-    from_number: incomingConn?.parameters?.From || "",
-    to_number: assignedNumber || "",
-    status: "missed",
-    created_at: new Date().toISOString(), duration: 0
-  });
+  user_email: currentUser && currentUser.email,
+  call_type: "incoming",
+  from_number: incomingConn?.parameters?.From || "",
+  to_number: assignedNumber || "",
+  status: "missed",
+  created_at: new Date().toISOString(),
+  duration: 0
+});
+
   incomingConn = null;
 }
 
-function hangUp(){ try{ activeConn?.disconnect?.(); device?.disconnectAll?.(); }catch{} stopCallUI(); }
-function stopCallUI(){ $("dialpadArea").style.display="flex"; $("activeArea").style.display="none"; $("hangupBtn").style.display="none"; clearWaveform(); stopTimer(); activeConn=null; inCall=false; }
+/* ---------- hangup ---------- */
+function hangUp(){
+  try{
+    if(activeConn && typeof activeConn.disconnect === 'function') activeConn.disconnect();
+    else if(device && typeof device.disconnectAll === 'function') device.disconnectAll();
+  }catch(e){ console.warn("hangUp error", e); }
+  stopCallUI();
+}
 
-/* mute/hold/speaker (same as your original) */
+/* ---------- stop UI ---------- */
+function stopCallUI(){
+  $("dialpadArea").style.display = "flex";
+  $("activeArea").style.display = "none";
+  $("hangupBtn").style.display = "none";
+  clearWaveform();
+  stopTimer();
+  activeConn = null;
+  inCall = false;  // <-- NEW
+}
+
+/* ---------- mute / hold ---------- */
 function toggleMute(){
   if(!activeConn && !localStream) return;
   try{
-    if(activeConn?.mute){
-      const muted = activeConn.isMuted?.() ?? !!activeConn._muted;
-      activeConn.mute(!muted); $("muteBtn").innerText = (!muted) ? "Unmute" : "Mute"; return;
+    if(activeConn && typeof activeConn.mute === "function"){
+      const muted = typeof activeConn.isMuted === 'function' ? activeConn.isMuted() : !!activeConn._muted;
+      activeConn.mute(!muted);
+      $("muteBtn").innerText = (!muted) ? "Unmute" : "Mute";
+      return;
     }
-    const s = localStream || activeConn?.mediaStream || activeConn?._mediaStream;
-    if(s?.getAudioTracks){ const curr = s.getAudioTracks()[0].enabled; s.getAudioTracks().forEach(t=>t.enabled=!curr); $("muteBtn").innerText = curr ? "Unmute" : "Mute"; }
-  }catch{}
+    const s = localStream || (activeConn && (activeConn.mediaStream || activeConn._mediaStream));
+    if(s && s.getAudioTracks){
+      const curr = s.getAudioTracks()[0].enabled;
+      s.getAudioTracks().forEach(t=>t.enabled = !curr);
+      $("muteBtn").innerText = curr ? "Unmute" : "Mute";
+    }
+  }catch(e){ console.warn(e); }
 }
+
 function toggleHold(){
   if(!activeConn && !localStream) return;
   try{
-    const s = localStream || activeConn?.mediaStream || activeConn?._mediaStream;
-    if(s?.getAudioTracks){ const curr = s.getAudioTracks()[0].enabled; s.getAudioTracks().forEach(t=>t.enabled=!curr); $("holdBtn").innerText = (!curr) ? "Resume" : "Hold"; }
-  }catch{}
-}
-window._speakerOn = false;
-async function toggleSpeaker(){
-  try{
-    if (!device?.audio) return alert("Speaker toggle not available.");
-    const outputsMap = device.audio.availableOutputDevices;
-    const speakerCtl  = device.audio.speakerDevices;
-    if (!outputsMap || !speakerCtl) return alert("Speaker control not supported.");
-    if (!window._speakerOn){
-      const allOutputDevices = Array.from(outputsMap.values());
-      if (allOutputDevices.length === 0) return alert("No audio output devices found.");
-      await speakerCtl.set(allOutputDevices); window._speakerOn = true; $("speakerBtn").innerText = "Speaker Off";
-    } else {
-      await speakerCtl.clear(); window._speakerOn = false; $("speakerBtn").innerText = "Speaker On";
+    const s = localStream || (activeConn && (activeConn.mediaStream || activeConn._mediaStream));
+    if(s && s.getAudioTracks){
+      const curr = s.getAudioTracks()[0].enabled;
+      s.getAudioTracks().forEach(t=>t.enabled = !curr);
+      $("holdBtn").innerText = (!curr) ? "Resume" : "Hold";
     }
-  }catch{ alert("Speaker toggle not supported on this device/browser."); }
+  }catch(e){ console.warn(e); }
 }
 
-/* waveform + timer (same as your original) */
-function renderWaveform(){ const w=$("waveWrap"); w.innerHTML=""; for(let i=0;i<6;i++){ const b=document.createElement("div"); b.style.width='6px'; b.style.background='#60a5fa'; b.style.borderRadius='3px'; b.style.height=(8+Math.random()*30)+"px"; b.style.transition='height 120ms'; w.appendChild(b);} (function anim(){ const bars=w.children; for(let i=0;i<bars.length;i++) bars[i].style.height=(8+Math.random()*36)+"px"; wfRaf=requestAnimationFrame(anim); })(); w.style.display="flex"; }
+/* ---------- speaker / handfree ---------- */
+window._speakerOn = false;
+
+async function toggleSpeaker() {
+  try {
+    if (!device || !device.audio) {
+      alert("Speaker toggle not available yet.");
+      return;
+    }
+
+    // Twilio Voice SDK v2 exposes available outputs and a speakerDevices controller
+    const outputsMap = device.audio.availableOutputDevices;   // Map<string, MediaDeviceInfo>
+    const speakerCtl  = device.audio.speakerDevices;          // controller with set()/clear()
+
+    if (!outputsMap || !speakerCtl) {
+      alert("Speaker control not supported in this browser.");
+      return;
+    }
+
+    if (!window._speakerOn) {
+      // Route audio to ALL available output devices (commonly the loudspeaker on Android Chrome/WebView)
+      const allOutputDevices = Array.from(outputsMap.values());
+      if (allOutputDevices.length === 0) {
+        alert("No audio output devices found.");
+        return;
+      }
+      await speakerCtl.set(allOutputDevices);
+      window._speakerOn = true;
+      $("speakerBtn").innerText = "Speaker Off";
+    } else {
+      // Clear routing override → go back to default (earpiece / system default)
+      await speakerCtl.clear();
+      window._speakerOn = false;
+      $("speakerBtn").innerText = "Speaker On";
+    }
+  } catch (e) {
+    console.warn("toggleSpeaker error:", e);
+    alert("Speaker toggle not supported on this device/browser.");
+  }
+}
+
+
+/* ---------- waveform ---------- */
+function renderWaveform(){
+  const wrap = $("waveWrap");
+  wrap.innerHTML = "";
+  for(let i=0;i<6;i++){
+    const b = document.createElement("div");
+    b.style.width='6px';
+    b.style.background='#60a5fa';
+    b.style.borderRadius='3px';
+    b.style.height=(8+Math.random()*30)+"px";
+    b.style.transition='height 120ms';
+    wrap.appendChild(b);
+  }
+  (function animate(){ const bars=wrap.children; for(let i=0;i<bars.length;i++) bars[i].style.height = (8+Math.random()*36)+"px"; wfRaf = requestAnimationFrame(animate); })();
+  wrap.style.display="flex";
+}
 function clearWaveform(){ if(wfRaf) cancelAnimationFrame(wfRaf); $("waveWrap").innerHTML=""; $("waveWrap").style.display="none"; }
-function startTimer(){ callStartTs=Date.now(); stopTimer(); timerInterval=setInterval(()=>{ const s=Math.floor((Date.now()-callStartTs)/1000); const mm=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); setText("callTimer", mm+":"+ss); },500); }
+
+/* ---------- timer ---------- */
+function startTimer(){ callStartTs = Date.now(); stopTimer(); timerInterval = setInterval(()=>{ const s = Math.floor((Date.now()-callStartTs)/1000); const mm = String(Math.floor(s/60)).padStart(2,'0'); const ss = String(s%60).padStart(2,'0'); setText("callTimer", mm+":"+ss); },500); }
 function stopTimer(){ if(timerInterval){ clearInterval(timerInterval); timerInterval=null; setText("callTimer","00:00"); } }
 
-/* history */
+/* ---------- history ---------- */
 async function refreshHistory(){
   try{
-    const res = await fetch(`${API_BASE}/calls`, { method:"GET", headers: await authHeaders() });
+    if(!currentUser) return;
+    const email = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+const res = await fetch(`${API_BASE}/calls${email}`, {
+  method: "GET",
+  headers: Object.assign({}, authHeaders())
+});
+
     if(!res.ok){ $("historyList").innerHTML = '<div class="muted">No calls yet</div>'; return; }
     const data = await res.json();
     if(!Array.isArray(data) || data.length===0){ $("historyList").innerHTML = '<div class="muted">No calls yet</div>'; return; }
     renderHistoryItems(data);
-  }catch{ $("historyList").innerHTML = '<div class="muted">Error loading history</div>'; }
+  }catch(e){ console.error("refreshHistory error", e); $("historyList").innerHTML = '<div class="muted">Error loading history</div>'; }
 }
 function renderHistoryItems(items){
-  const container = $("historyList"); container.innerHTML = "";
+  const container = $("historyList");
+  container.innerHTML = "";
+
   items.forEach(it => {
-    const div = document.createElement("div"); div.className="history-item";
+    const div = document.createElement("div");
+    div.className = "history-item";
+
     const type = String(it.call_type || it.type || "").toLowerCase();
-    let displayNum = ""; if (type === "incoming") displayNum = it.from_number || it.to_number || ""; else if (type === "outgoing") displayNum = it.to_number || it.from_number || ""; else displayNum = it.to_number || it.from_number || "";
-    const left = document.createElement("div"); left.style.display="flex"; left.style.flexDirection="column";
-    const badge = document.createElement("div"); badge.className="badge"; badge.innerText=(it.call_type || it.type || "UNKNOWN").toUpperCase();
-    const main = document.createElement("div"); main.style.fontWeight=700; main.innerText=showE164(displayNum);
-    const sub = document.createElement("div"); sub.className="muted"; sub.style.fontSize="12px"; sub.innerText=it.status || "";
-    left.appendChild(badge); left.appendChild(main); left.appendChild(sub);
-    const right = document.createElement("div"); right.style.textAlign="right"; right.innerHTML = `<div class="muted">${new Date(it.created_at || Date.now()).toLocaleString()}</div><div style="font-weight:700;margin-top:6px">${(it.duration || 0)} s</div>`;
-    div.appendChild(left); div.appendChild(right); container.appendChild(div);
+
+    // choose which number to display
+    let displayNum = "";
+    if (type === "incoming") {
+      displayNum = it.from_number || it.other_number || it.phone_number || it.to_number || "";
+    } else if (type === "outgoing") {
+      displayNum = it.to_number || it.other_number || it.phone_number || it.from_number || "";
+    } else {
+      // fallback if type missing
+      displayNum = it.to_number || it.from_number || it.other_number || it.phone_number || "";
+    }
+
+    // left side
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const badge = document.createElement("div");
+    badge.className = "badge";
+    badge.innerText = (it.call_type || it.type || "UNKNOWN").toUpperCase();
+
+    const main = document.createElement("div");
+    main.style.fontWeight = 700;
+    main.innerText = showE164(displayNum);
+
+    const sub = document.createElement("div");
+    sub.className = "muted";
+    sub.style.fontSize = "12px";
+    sub.innerText = it.status || "";
+
+    left.appendChild(badge);
+    left.appendChild(main);
+    left.appendChild(sub);
+
+    // right side
+    const right = document.createElement("div");
+    right.style.textAlign = "right";
+    right.innerHTML = `
+      <div class="muted">${new Date(it.created_at || it.started_at || Date.now()).toLocaleString()}</div>
+      <div style="font-weight:700;margin-top:6px">${(it.duration || 0)} s</div>
+    `;
+
+    div.appendChild(left);
+    div.appendChild(right);
+    container.appendChild(div);
   });
 }
-function startHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval=setInterval(refreshHistory,8000); }
+
+/* ---------- polling ---------- */
+function startHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval = setInterval(refreshHistory,8000); }
 function stopHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval=null; }
 
-/* UI wiring */
+/* ---------- UI wiring ---------- */
 document.addEventListener("click",(e)=>{ const k = e.target.closest("[data-key]"); if(k) $("dialInput").value += k.getAttribute("data-key"); });
 $("startCallBtn").addEventListener("click", startCall);
 $("hangupBtn").addEventListener("click", hangUp);
@@ -508,41 +786,77 @@ $("muteBtn").addEventListener("click", toggleMute);
 $("holdBtn").addEventListener("click", toggleHold);
 $("answerBtn").addEventListener("click", answerIncoming);
 $("declineBtn").addEventListener("click", declineIncoming);
-$("logoutBtn").addEventListener("click", performLogout);
+$("logoutBtn").addEventListener("click", async ()=>{ await performLogout(); });
 $("speakerBtn").addEventListener("click", toggleSpeaker);
+
+/* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
-$("sendVerifyBtn").addEventListener("click", sendVerify);
-$("loginPassword")?.addEventListener?.("keydown",(e)=>{ if(e.key==='Enter') performLogin(); });
+$("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown",(e)=>{ if(e.key==='Enter') performLogin(); });
 
-/* after login */
+
+/* ---------- after login ---------- */
 async function postLoginInit(){
-  await loadProfile();
-  // Mic attempt (may be blocked until gesture)
   try{
-    const micOk = await ensureMic();
-    if(micOk){ await initTwilioDevice(); }
-    else { const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); }; document.addEventListener("click", gestureInit); }
-  }catch{
-    const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
-    document.addEventListener("click", gestureInit);
-  }
-  await refreshHistory(); startHistoryPolling();
+    await loadProfile();
+    await initTwilioDevice(); // will call safeInitTwilioDevice internally
+    await refreshHistory();
+    startHistoryPolling();
+  }catch(e){ console.error("postLoginInit error", e); }
 }
 
-/* init */
+/* ---------- app init (auto-login) ---------- */
 async function init(){
-  auth.onAuthStateChanged(async (u)=>{
-    if(u && u.emailVerified){
-      hideLoginModal();
-      await postLoginInit();
-    } else {
-      showLoginModal();
-    }
-  });
+  try{
+    const token = getAuthToken();
+    const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    if(token && savedUser.email){
+      console.log("🔁 Auto-login from localStorage");
+      currentUser = savedUser;
+      await loadProfile();
+      await refreshHistory();
 
-  window.addEventListener("beforeunload", (e) => { if (inCall) { e.preventDefault(); e.returnValue = ""; } });
-  window.addEventListener("pagehide", () => { try { if (device) device.disconnectAll(); } catch {} });
+      // Try to obtain mic once (may be blocked); if blocked, init on first user gesture
+      try{
+        const micOk = await ensureMic();
+        if(micOk){
+          await initTwilioDevice();
+        } else {
+          console.warn("Mic not granted at auto-login; will init Twilio on first gesture.");
+          const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
+          document.addEventListener("click", gestureInit);
+        }
+      }catch(e){
+        console.warn("Auto-login mic check failed:", e);
+        const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
+        document.addEventListener("click", gestureInit);
+      }
+
+      startHistoryPolling();
+      return;
+    }
+
+    console.warn("No saved session, showing login modal");
+    showLoginModal();
+  }catch(e){
+    console.error("init error", e);
+    showLoginModal();
+  }
 }
+
+// Warn before reload/close while a call is active
+window.addEventListener("beforeunload", (e) => {
+  if (inCall) {
+    e.preventDefault();
+    e.returnValue = ""; // shows the native "Leave site?" dialog
+  }
+});
+
+// If the user still leaves, disconnect cleanly so the far end hangs up
+window.addEventListener("pagehide", () => {
+  try { if (device) device.disconnectAll(); } catch {}
+});
+
+  
 init();
 </script>
 </body>
