@@ -14,30 +14,50 @@ from twilio.twiml.voice_response import VoiceResponse, Dial
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+print("FIREBASE_PROJECT_ID:", os.getenv("FIREBASE_PROJECT_ID"))
+print("HAS_JSON_ENV:", bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")))
+print("HAS_FILE_PATH:", bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS")))
 
-# ---------- Firebase Admin init ----------
-# ---------- Firebase Admin init ----------
-if not firebase_admin._apps:
-    cred = None
-    creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # path to Secret File
-    if creds_json:
-        data = json.loads(creds_json)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-            tmp.write(json.dumps(data).encode())
-            tmp.flush()
-            cred = credentials.Certificate(tmp.name)
-    elif creds_path and os.path.exists(creds_path):
-        cred = credentials.Certificate(creds_path)
-    else:
-        raise RuntimeError(
-            "Firebase creds missing: set GOOGLE_APPLICATION_CREDENTIALS_JSON (preferred) "
-            "or GOOGLE_APPLICATION_CREDENTIALS with the service-account file path."
-        )
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
-    firebase_admin.initialize_app(cred, {
-        "projectId": os.getenv("FIREBASE_PROJECT_ID")
-    })
+
+# ---------- Firebase Admin lazy init ----------
+firebase_inited = False
+db = None
+
+def ensure_firebase():
+    global firebase_inited, db
+    if firebase_inited:
+        return
+
+    try:
+        cred = None
+        creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # Secret File path
+        if creds_json:
+            data = json.loads(creds_json)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+                tmp.write(json.dumps(data).encode()); tmp.flush()
+                cred = credentials.Certificate(tmp.name)
+        elif creds_path and os.path.exists(creds_path):
+            cred = credentials.Certificate(creds_path)
+        else:
+            raise RuntimeError("Firebase creds missing: set GOOGLE_APPLICATION_CREDENTIALS_JSON or GOOGLE_APPLICATION_CREDENTIALS")
+
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred, {"projectId": os.getenv("FIREBASE_PROJECT_ID")})
+
+        # init Firestore client
+        globals()["db"] = firestore.client()
+        firebase_inited = True
+        print("✅ Firebase initialized")
+    except Exception as e:
+        print("🔥 Firebase init failed:", repr(e))
+        traceback.print_exc()
+        # don't raise here; let routes return a friendly error instead
+
 
 # ---------- Helpers ----------
 def _ok_cors():
