@@ -222,6 +222,65 @@ def profile():
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
 
+@app.route("/change-password", methods=["POST", "OPTIONS"])
+def change_password():
+    if request.method == "OPTIONS":
+        return _ok_cors()
+    try:
+        data = request.get_json(force=True)
+        old_password = data.get("old_password") or data.get("oldPassword") or ""
+        new_password = data.get("new_password") or data.get("newPassword") or ""
+        confirm_password = data.get("confirm_password") or data.get("confirmPassword") or ""
+
+        if not old_password or not new_password or not confirm_password:
+            return jsonify({"error": "old_password, new_password and confirm_password are required"}), 400
+
+        if new_password != confirm_password:
+            return jsonify({"error": "New password and confirmation do not match"}), 400
+
+        # Resolve authenticated email (Bearer token or fallback header/param)
+        auth_email = auth_from_token(request.headers.get("Authorization", "")) \
+                     or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
+
+        # If no auth header, also accept email in body (keeps parity with other endpoints)
+        if not auth_email:
+            auth_email = (data.get("email") or data.get("user_email") or data.get("user") or "").strip().lower()
+
+        if not auth_email:
+            return jsonify({"error": "User identity required"}), 400
+
+        # Read sheet values (we need row indices)
+        all_vals = users_ws.get_all_values()
+        if not all_vals or len(all_vals) < 1:
+            return jsonify({"error": "Users sheet empty or missing headers"}), 500
+
+        headers = all_vals[0]
+        # find column indices (0-based)
+        email_col = next((i for i, h in enumerate(headers) if str(h).strip().lower() == "email"), None)
+        password_col = next((i for i, h in enumerate(headers) if str(h).strip().lower() == "password"), None)
+
+        if email_col is None or password_col is None:
+            return jsonify({"error": "Users sheet must have 'Email' and 'Password' columns"}), 500
+
+        # Find the user's row (sheet rows are 1-indexed)
+        for row_idx, row in enumerate(all_vals[1:], start=2):  # start=2 because header is row 1
+            cell_email = (row[email_col] if len(row) > email_col else "") or ""
+            if str(cell_email).strip().lower() == auth_email.strip().lower():
+                current_pw = (row[password_col] if len(row) > password_col else "") or ""
+                if str(current_pw) != str(old_password):
+                    return jsonify({"error": "Old password does not match"}), 403
+
+                # Update the password cell (update_cell uses 1-based col index)
+                users_ws.update_cell(row_idx, password_col + 1, str(new_password))
+                return jsonify({"success": True, "message": "Password updated"}), 200
+
+        return jsonify({"error": "User not found"}), 404
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error"}), 500
+
+
 @app.route("/calls", methods=["GET", "OPTIONS"])
 def get_calls():
     if request.method == "OPTIONS":
