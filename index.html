@@ -235,6 +235,25 @@
     </div>
   </div>
 
+    
+    <!-- Change Password Modal -->
+  <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10001;align-items:center;justify-content:center">
+    <div class="modalCard" style="width:360px;text-align:left">
+      <div style="font-weight:700;font-size:18px">Change Password</div>
+      <div class="muted" style="margin-top:6px">Enter your old password and choose a new one.</div>
+      <input id="changeOld" placeholder="Old password" type="password" />
+      <input id="changeNew" placeholder="New password" type="password" />
+      <input id="changeConfirm" placeholder="Confirm new password" type="password" />
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button id="changeSubmitBtn" class="btn call" style="flex:1" type="button">Submit</button>
+        <button id="changeCancelBtn" class="btn gray" style="flex:1" type="button">Cancel</button>
+      </div>
+      <div id="changeError" class="muted" style="color:var(--danger);margin-top:10px;display:none"></div>
+      <div id="changeSuccess" class="muted" style="color:var(--green);margin-top:10px;display:none"></div>
+    </div>
+  </div>
+  
+
   <!-- Ringtone (tiny silent audio placeholder that browsers allow to preload) -->
   <audio id="ringtoneAudio" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" preload="auto"></audio>
 
@@ -793,6 +812,71 @@ $("speakerBtn").addEventListener("click", toggleSpeaker);
 /* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
 $("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown",(e)=>{ if(e.key==='Enter') performLogin(); });
+
+/* ---------- change password modal ---------- */
+function showChangePwdModal(){
+  $("changeError").style.display = "none";
+  $("changeSuccess").style.display = "none";
+  $("changeOld").value = "";
+  $("changeNew").value = "";
+  $("changeConfirm").value = "";
+  $("changePwdModal").style.display = "flex";
+}
+function hideChangePwdModal(){
+  $("changePwdModal").style.display = "none";
+}
+
+/* perform change password */
+async function performChangePassword(){
+  $("changeError").style.display = "none";
+  $("changeSuccess").style.display = "none";
+
+  const oldp = $("changeOld").value;
+  const newp = $("changeNew").value;
+  const conf = $("changeConfirm").value;
+
+  if(!oldp || !newp || !conf){ $("changeError").innerText = "All fields are required."; $("changeError").style.display = "block"; return; }
+  if(newp !== conf){ $("changeError").innerText = "New password and confirmation must match."; $("changeError").style.display = "block"; return; }
+  if(newp.length < 4){ $("changeError").innerText = "Choose a stronger password (min 4 chars)."; $("changeError").style.display = "block"; return; }
+
+  try{
+    const body = { old_password: oldp, new_password: newp, confirm_password: conf };
+
+    const token = getAuthToken();
+    let url = `${API_BASE}/change-password`;
+    if(!token && currentUser && currentUser.email){
+      url += `?email=${encodeURIComponent(currentUser.email)}`;
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify(body)
+    });
+
+    const json = await res.json().catch(()=>({}));
+
+    if(res.ok){
+      $("changeSuccess").innerText = (json && json.message) ? json.message : "Password changed successfully.";
+      $("changeSuccess").style.display = "block";
+      // Close after a short delay
+      setTimeout(()=>{ hideChangePwdModal(); }, 900);
+    } else {
+      const errMsg = (json && json.error) ? json.error : `Server returned ${res.status}`;
+      $("changeError").innerText = errMsg;
+      $("changeError").style.display = "block";
+    }
+  }catch(e){
+    console.error("performChangePassword error", e);
+    $("changeError").innerText = "Network error";
+    $("changeError").style.display = "block";
+  }
+}
+
+/* wire up change password UI */
+$("changePwdBtn").addEventListener("click", showChangePwdModal);
+$("changeCancelBtn").addEventListener("click", hideChangePwdModal);
+$("changeSubmitBtn").addEventListener("click", performChangePassword);
 
 
 /* ---------- after login ---------- */
