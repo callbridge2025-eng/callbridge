@@ -425,7 +425,6 @@ def twilio_token():
         data = request.get_json(force=True)
         user_id = data.get("user_id") or data.get("user") or None
         if not user_id:
-            # if no user_id provided, try auth header
             auth = request.headers.get("Authorization", "")
             user_id = auth_from_token(auth)
 
@@ -447,7 +446,7 @@ def twilio_token():
         if isinstance(jwt, bytes):
             jwt = jwt.decode("utf-8")
 
-                user = find_user_by_email(user_id)
+        user = find_user_by_email(user_id)
 
         raw_caller = (
             user.get("assigned_number")
@@ -458,7 +457,6 @@ def twilio_token():
         caller_id = to_e164(raw_caller, default_region=DEFAULT_REGION or None)
 
         return jsonify({"token": jwt, "callerId": caller_id})
-
 
     except Exception as e:
         traceback.print_exc()
