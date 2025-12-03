@@ -460,8 +460,6 @@ def twilio_token():
         return jsonify({"token": jwt, "callerId": caller_id})
 
 
-
-        return jsonify({"token": jwt, "callerId": caller_id})
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
