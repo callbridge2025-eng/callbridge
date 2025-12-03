@@ -12,6 +12,10 @@ from twilio.jwt.access_token.grants import VoiceGrant
 from twilio.twiml.voice_response import VoiceResponse, Dial
 import phonenumbers  # pip install phonenumbers
 
+# Optional default region for phone parsing. Set as an env var like DEFAULT_REGION=IN or DEFAULT_REGION=GB
+DEFAULT_REGION = os.environ.get("DEFAULT_REGION", "").strip() or None
+
+
 # ---------------- Flask App ----------------
 app = Flask(__name__)
 # Allow all origins for now (tighten to your domain in production)
@@ -86,26 +90,41 @@ def _ok_cors():
     return resp
 
 def find_user_by_assigned_number(num):
-    """Return user dict whose Assigned Number matches num (E.164)."""
+    """Return user dict whose Assigned Number matches num (try to normalize globally)."""
     try:
         if not num:
             return None
-        target = to_e164(str(num), default_region='US')
+        # Normalize target by best-effort attempt.
+        target = to_e164(str(num), default_region=None)
         rows = users_ws.get_all_records()
         for r in rows:
-            assigned = to_e164(str(r.get("Assigned Number", "")).strip(), default_region='US')
-            if assigned and assigned == target:
+            assigned_raw = str(r.get("Assigned Number", "") or "").strip()
+            if not assigned_raw:
+                continue
+            assigned_norm = to_e164(assigned_raw, default_region=None)
+            if assigned_norm and target and assigned_norm == target:
                 return {
                     "id": r.get("Email"),
                     "email": r.get("Email"),
                     "display_name": r.get("Display Name"),
-                    "assigned_number": assigned,
+                    "assigned_number": assigned_norm,
+                    "expiry_date": r.get("Expiry Date"),
+                    "role": r.get("Role"),
+                }
+            # fallback: direct string compare (case-insensitive) in case sheet has weird format
+            if assigned_raw and assigned_raw.strip().lower() == str(num).strip().lower():
+                return {
+                    "id": r.get("Email"),
+                    "email": r.get("Email"),
+                    "display_name": r.get("Display Name"),
+                    "assigned_number": assigned_raw,
                     "expiry_date": r.get("Expiry Date"),
                     "role": r.get("Role"),
                 }
     except Exception:
         traceback.print_exc()
     return None
+
 
 def _https_url(url, req):
     proto = req.headers.get("X-Forwarded-Proto", "https")
@@ -148,21 +167,51 @@ def _get_first_key(d: dict, candidates):
 
 # --- Phone normalization & Sheets RAW append ---
 
-def to_e164(num: str, default_region='US') -> str:
-    """Return E.164 (+14155551234). If empty/invalid, return original unchanged."""
+def to_e164(num: str, default_region=None) -> str:
+    """
+    Try to return canonical E.164 form for num. If parsing fails, returns the original trimmed string.
+    Strategy:
+      1) If number starts with + -> parse without region (international parse)
+      2) Else try default_region param (if provided)
+      3) Else try global DEFAULT_REGION env var
+      4) Else fallback to 'US' (legacy behavior)
+    """
     if not num:
         return num
     n = str(num).strip()
-    try:
-        # If user typed 10 digits, treat as US and add +1
-        if n.isdigit() and len(n) == 10 and default_region == 'US':
-            n = f"+1{n}"
-        parsed = phonenumbers.parse(n, default_region)
-        if phonenumbers.is_valid_number(parsed):
-            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-    except Exception:
-        pass
-    return n  # leave as-is if we can't parse
+    if not n:
+        return n
+
+    # quick sanitize: remove common separators (but preserve leading +)
+    cleaned = n if n.startswith('+') else n.replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+
+    regions_to_try = []
+    # if the caller explicitly provided a default_region param, try that next
+    if cleaned.startswith('+'):
+        regions_to_try = [None]  # parse as international
+    else:
+        if default_region:
+            regions_to_try.append(default_region)
+        if DEFAULT_REGION:
+            regions_to_try.append(DEFAULT_REGION)
+        # fallback to US to preserve current behaviour
+        regions_to_try.append('US')
+
+    for region in regions_to_try:
+        try:
+            parsed = phonenumbers.parse(cleaned, region)
+            if phonenumbers.is_valid_number(parsed):
+                return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        except Exception:
+            continue
+
+    # Special-case: if the user typed exactly 10 digits and we have no region, assume US
+    if cleaned.isdigit() and len(cleaned) == 10:
+        return f"+1{cleaned}"
+
+    # else, give back the trimmed original so your datastore still records what the caller sent
+    return n
+
 
 def append_row_raw(ws, row):
     """Append exactly-as-given values (keeps + in Google Sheets)."""
@@ -399,8 +448,9 @@ def twilio_token():
             jwt = jwt.decode("utf-8")
 
         user = find_user_by_email(user_id)
-        raw_caller = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
-        caller_id = to_e164(raw_caller, default_region='US')
+raw_caller = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
+caller_id = to_e164(raw_caller, default_region=DEFAULT_REGION or None)
+
 
         return jsonify({"token": jwt, "callerId": caller_id})
     except Exception as e:
