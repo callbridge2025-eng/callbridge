@@ -447,9 +447,18 @@ def twilio_token():
         if isinstance(jwt, bytes):
             jwt = jwt.decode("utf-8")
 
-        user = find_user_by_email(user_id)
-raw_caller = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
-caller_id = to_e164(raw_caller, default_region=DEFAULT_REGION or None)
+                user = find_user_by_email(user_id)
+
+        raw_caller = (
+            user.get("assigned_number")
+            if user
+            else os.environ.get("TWILIO_PHONE_NUMBER")
+        )
+
+        caller_id = to_e164(raw_caller, default_region=DEFAULT_REGION or None)
+
+        return jsonify({"token": jwt, "callerId": caller_id})
+
 
 
         return jsonify({"token": jwt, "callerId": caller_id})
