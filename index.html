@@ -538,69 +538,90 @@ async function initTwilioDevice(){
 /* ---------- outgoing call ---------- */
 async function startCall(){
   const number = $("dialInput").value.trim();
-  if(!number) return alert("Enter a number to call.");
+  if (!number) {
+    alert("Enter a number to call.");
+    return;
+  }
 
-  if(!localStream){
+  if (!localStream) {
     const ok = await ensureMic();
-    if(!ok) return alert("Allow microphone to place calls.");
+    if (!ok) {
+      alert("Allow microphone to place calls.");
+      return;
+    }
   }
-  if(!device){
+
+  if (!device) {
     await initTwilioDevice();
-    if(!device) return alert("Twilio device initialization failed.");
+    if (!device) {
+      alert("Twilio device initialization failed.");
+      return;
+    }
   }
 
-  try{
-    await remoteSaveCall({
-  user_email: currentUser && currentUser.email,
-  call_type: "outgoing",
-  from_number: assignedNumber || "",
-  to_number: number,
-  status: "initiated",
-  created_at: new Date().toISOString()
-});
-
-
-    const conn = device.connect({ params: { To: number } });
-    activeConn = conn || null;
-
-    $("activeArea").style.display = "flex";
-    $("hangupBtn").style.display = "inline-block";
-    inCall = true;   // <-- NEW
-    setText("activeLabel", showE164(number) || "In Call");
-    startTimer();
-    renderWaveform();
-    try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
-    if (activeConn && typeof activeConn.on === 'function') {
-  activeConn.on("accept", () => {
-    callConnected = true;              // ✅ now DTMF is allowed
-    callStartTs = Date.now();
-    console.log("Call accepted, DTMF enabled");
-  });
-
-  activeConn.on("disconnect", async () => {
-    callConnected = false;             // 🔕 stop DTMF
-    const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
+  try {
+    // log "initiated" to Google Sheet
     await remoteSaveCall({
       user_email: currentUser && currentUser.email,
       call_type: "outgoing",
       from_number: assignedNumber || "",
       to_number: number,
-      status: "completed",
-      created_at: new Date().toISOString(),
-      duration
+      status: "initiated",
+      created_at: new Date().toISOString()
     });
 
-    stopCallUI();
-    refreshHistory();
-  });
+    // 🔑 IMPORTANT: wait for the Call object here
+    const conn = await device.connect({ params: { To: number } });
+    activeConn = conn;            // ✅ this is now a Call, not a Promise
+    inCall = true;
+    callConnected = false;        // will turn true on "accept"
 
-  activeConn.on("error", (err) => {
-    console.error("connection error", err);
-    callConnected = false;
-    stopCallUI();
-  });
-}
-  }catch(e){ console.error("startCall error", e); alert("Failed to start call."); }
+    $("activeArea").style.display = "flex";
+    $("hangupBtn").style.display = "inline-block";
+    setText("activeLabel", showE164(number) || "In Call");
+    startTimer();
+    renderWaveform();
+
+    try {
+      $("ringtoneAudio").pause();
+      $("ringtoneAudio").currentTime = 0;
+    } catch (e) {}
+
+    // Wire call events
+    if (activeConn && typeof activeConn.on === "function") {
+      activeConn.on("accept", () => {
+        callConnected = true;
+        callStartTs = Date.now();
+        console.log("Call accepted, DTMF enabled");
+      });
+
+      activeConn.on("disconnect", async () => {
+        callConnected = false;
+        const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
+        await remoteSaveCall({
+          user_email: currentUser && currentUser.email,
+          call_type: "outgoing",
+          from_number: assignedNumber || "",
+          to_number: number,
+          status: "completed",
+          created_at: new Date().toISOString(),
+          duration
+        });
+
+        stopCallUI();
+        refreshHistory();
+      });
+
+      activeConn.on("error", (err) => {
+        console.error("connection error", err);
+        callConnected = false;
+        stopCallUI();
+      });
+    }
+  } catch (e) {
+    console.error("startCall error", e);
+    alert("Failed to start call.");
+  }
 }
 
 /* ---------- answer/decline incoming ---------- */
