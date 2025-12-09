@@ -679,58 +679,90 @@ def vm_screen():
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
 
-@app.route("/send-sms", methods=["POST"])
+@app.route("/send-sms", methods=["POST", "OPTIONS"])
 def send_sms():
-    """
-    Send an outbound SMS using Twilio and log it to the SMSLogs sheet.
-    Called from frontend: POST /send-sms?email=...  body: { "to": "...", "body": "..." }
-    """
+    # CORS preflight
+    if request.method == "OPTIONS":
+        return make_response(("", 200, {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        }))
+
     try:
-        user_email = request.args.get("email")
-        data = request.get_json(force=True, silent=True) or {}
+        # --- basic config checks ---
+        if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN):
+            return jsonify({"error": "Twilio credentials not configured on server"}), 500
+
+        # Choose how we send SMS: Messaging Service SID (preferred) OR From number
+        use_kwargs = {}
+        if TWILIO_SMS_SERVICE_SID:
+            use_kwargs["messaging_service_sid"] = TWILIO_SMS_SERVICE_SID
+        elif TWILIO_SMS_FROM:
+            use_kwargs["from_"] = TWILIO_SMS_FROM
+        else:
+            return jsonify({
+                "error": "TWILIO_SMS_FROM or TWILIO_SMS_SERVICE_SID not configured on server"
+            }), 500
+
+        # --- parse input from frontend ---
+        data = request.get_json(silent=True) or {}
         to = data.get("to")
         body = data.get("body")
+        user_email = request.args.get("email")  # from ?email=... in frontend
 
         if not to or not body:
             return jsonify({"error": "Missing 'to' or 'body'"}), 400
 
-        # ---- Twilio send ----
-        from_number = os.environ.get("TWILIO_SMS_FROM") or os.environ.get("TWILIO_CALLER_ID")
-        if not from_number:
-            return jsonify({"error": "TWILIO_SMS_FROM not configured"}), 500
+        # --- normalise phone number a bit (optional) ---
+        to = str(to).strip()
 
-        msg = twilio_client.messages.create(
-            from_=from_number,
+        # --- send SMS via Twilio ---
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+        msg = client.messages.create(
             to=to,
             body=body,
+            **use_kwargs
         )
 
-        # ---- Log to Google Sheet SMSLogs ----
+        # --- log to your Google Sheet (reuse your existing helper here) ---
         try:
-            ws = sheet.worksheet("SMSLogs")  
-            now_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-            ws.append_row([
-                now_str,                
-                msg.direction,          
-                msg.from_,              
-                msg.to,                 
-                body,                   
-                user_email or "",       
-                msg.status,             
-                msg.sid,                
-            ])
-        except Exception as sheet_err:
-            print("Error logging SMS to Google Sheet:", sheet_err)
+            # Example – adjust to your actual sheet helper and columns
+            # add_sms_log(timestamp, direction, from, to, body, user_email, status, sid)
+            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            status = getattr(msg, "status", "queued")
+            sid = getattr(msg, "sid", "")
 
+            # If you already have a function like append_sms_row(...) – call that instead:
+            sms_sheet = get_sms_sheet()  # <- use your own helper if different
+            sms_sheet.append_row([
+                timestamp,
+                "outgoing",
+                TWILIO_SMS_FROM or "",
+                to,
+                body,
+                user_email or "",
+                status,
+                sid,
+            ])
+        except Exception as log_err:
+            app.logger.warning(f"Failed to log SMS to sheet: {log_err}")
+
+        # --- success response back to frontend ---
         return jsonify({
-            "success": True,
             "sid": msg.sid,
             "status": msg.status,
-        }), 200
+            "to": msg.to,
+        })
 
     except Exception as e:
-        print("Unexpected error in /send-sms:", e)
-        return jsonify({"error": "Internal server error in /send-sms"}), 500
+        # This will show full traceback in Render logs
+        app.logger.exception("Error in /send-sms")
+        return jsonify({
+            "error": "Failed to send SMS",
+            "details": str(e)
+        }), 500
 
 
 
