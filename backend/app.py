@@ -790,8 +790,9 @@ def get_voicemails():
                      or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
 
         if not auth_email:
-            # Same behavior as /calls and /sms-logs: return empty list for unauthenticated / no identity
             return jsonify([])
+
+        auth_email = auth_email.strip().lower()
 
         viewer = find_user_by_email(auth_email)
         is_admin = False
@@ -800,25 +801,51 @@ def get_voicemails():
 
         rows = voicemails_ws.get_all_records()
         items = []
-
         for r in rows:
             row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
-            if is_admin or row_email == auth_email:
-                items.append({
-                    "created_at": r.get("Timestamp") or r.get("timestamp"),
-                    "from_number": r.get("From") or r.get("from"),
-                    "to_number": r.get("To") or r.get("to"),
-                    "recording_url": r.get("RecordingUrl") or r.get("Recording URL") or r.get("recording_url"),
-                    "duration": _coerce_int(
-                        r.get("Duration") or
-                        r.get("duration") or
-                        r.get("RecordingDuration") or 0
-                    ),
-                })
+            row_to    = (r.get("To") or r.get("to") or "").strip()
+
+            show = False
+
+            if is_admin:
+                # admins see all voicemails
+                show = True
+            else:
+                # 1) exact match on User Email (preferred)
+                if row_email and row_email == auth_email:
+                    show = True
+                else:
+                    # 2) try to map by "To" number in the row
+                    mapped_email = None
+                    if row_to:
+                        mapped_user = find_user_by_assigned_number(to_e164(row_to))
+                        if mapped_user:
+                            mapped_email = str(mapped_user.get("email") or "").strip().lower()
+
+                    if mapped_email == auth_email:
+                        show = True
+                    else:
+                        # 3) LAST FALLBACK:
+                        #    if there is NO User Email and NO To number,
+                        #    treat it as "global" and show it to everyone
+                        if not row_email and not row_to:
+                            show = True
+
+            if not show:
+                continue
+
+            items.append({
+                "created_at": r.get("Timestamp") or r.get("timestamp"),
+                "from_number": r.get("From") or r.get("from"),
+                "to_number": r.get("To") or r.get("to"),
+                "recording_url": r.get("RecordingUrl") or r.get("Recording URL") or r.get("recording_url"),
+                "duration": _coerce_int(
+                    r.get("Duration") or r.get("duration") or r.get("RecordingDuration") or 0
+                ),
+            })
 
         items = list(reversed(items))
         return jsonify(items), 200
-
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
