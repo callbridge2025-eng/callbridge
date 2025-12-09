@@ -4,7 +4,10 @@ import os, secrets, time, traceback
 import requests
 from flask import Response
 import urllib.parse
-
+from twilio.base.exceptions import TwilioException
+from flask import request, jsonify
+import traceback
+import datetime
 
 # Google Sheets
 import gspread
@@ -676,51 +679,79 @@ def vm_screen():
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
 
-@app.route("/send-sms", methods=["POST", "OPTIONS"])
+@app.route("/send-sms", methods=["POST"])
+@require_auth  # or whatever decorator you already use for auth
 def send_sms():
-    if request.method == "OPTIONS":
-        return _ok_cors()
+    """
+    Send an outbound SMS using Twilio and log it to the SMSLogs sheet.
+    Called from frontend: POST /send-sms?email=...  body: { "to": "...", "body": "..." }
+    """
     try:
-        data = request.get_json(force=True)
-        to_raw = data.get("to") or data.get("to_number")
-        body = data.get("body") or data.get("message")
+        user_email = request.args.get("email") or getattr(g, "current_user", {}).get("email")
+        data = request.get_json(force=True, silent=True) or {}
+        to = data.get("to")
+        body = data.get("body")
 
-        if not to_raw or not body:
-            return jsonify({"error": "to and body are required"}), 400
+        if not to or not body:
+            return jsonify({"error": "Missing 'to' or 'body'"}), 400
 
-        # Resolve who is sending
-        auth_email = auth_from_token(request.headers.get("Authorization", "")) \
-                     or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
+        # ---- Twilio send ----
+        # Choose ONE of these blocks depending on how you configured Twilio:
 
-        user = find_user_by_email(auth_email) if auth_email else None
+        # OPTION A: Using Messaging Service (recommended if you set “Default Messaging Service” in Twilio)
+        # messaging_service_sid = os.environ.get("TWILIO_MESSAGING_SERVICE_SID")
+        # if not messaging_service_sid:
+        #     return jsonify({"error": "TWILIO_MESSAGING_SERVICE_SID not configured"}), 500
+        # msg = twilio_client.messages.create(
+        #     messaging_service_sid=messaging_service_sid,
+        #     to=to,
+        #     body=body,
+        # )
 
-        # From: user's assigned number, fallback to env SMS/Twilio number
-        from_raw = (user or {}).get("assigned_number") \
-                   or os.environ.get("TWILIO_SMS_NUMBER") \
-                   or os.environ.get("TWILIO_PHONE_NUMBER")
+        # OPTION B: Using a single FROM number
+        from_number = os.environ.get("TWILIO_SMS_FROM") or os.environ.get("TWILIO_CALLER_ID")
+        if not from_number:
+            return jsonify({"error": "TWILIO_SMS_FROM (or TWILIO_CALLER_ID) not configured"}), 500
 
-        from_e164 = to_e164(from_raw)
-        to_e164_num = to_e164(to_raw)
-
-        client = get_twilio_client()
-        msg = client.messages.create(
-            to=to_e164_num,
-            from_=from_e164,
-            body=body
+        msg = twilio_client.messages.create(
+            from_=from_number,
+            to=to,
+            body=body,
         )
 
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        user_email = auth_email or (user or {}).get("email") or ""
+        # ---- Log to Google Sheet SMSLogs ----
+        try:
+            ws = sheet.worksheet("SMSLogs")  # make sure tab name is exactly SMSLogs
+            now_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            ws.append_row([
+                now_str,                 # Timestamp
+                msg.direction,           # Direction (outbound-api)
+                msg.from_,               # From
+                msg.to,                  # To
+                body,                    # Body
+                user_email or "",        # User Email
+                msg.status,              # Status (queued/sent/...)
+                msg.sid,                 # SID
+            ])
+        except Exception as sheet_err:
+            # Don't fail the request if sheet logging breaks
+            print("Error logging SMS to Google Sheet:", sheet_err)
+            traceback.print_exc()
 
-        append_row_raw(
-            sms_ws,
-            [timestamp, "outgoing", from_e164, to_e164_num, body, user_email, msg.status or "queued", msg.sid]
-        )
+        return jsonify({
+            "success": True,
+            "sid": msg.sid,
+            "status": msg.status,
+        }), 200
 
-        return jsonify({"success": True, "sid": msg.sid}), 200
-    except Exception as e:
+    except TwilioException as te:
+        print("TwilioException while sending SMS:", te)
         traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"error": str(te)}), 500
+    except Exception as e:
+        print("Unexpected error in /send-sms:", e)
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error in /send-sms"}), 500
 
 
 
