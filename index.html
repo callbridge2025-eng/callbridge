@@ -1045,6 +1045,7 @@ function renderVoicemails(items){
     const div = document.createElement("div");
     div.className = "history-item";
 
+    // LEFT SIDE (who called, when, to which number)
     const left = document.createElement("div");
     left.style.display = "flex";
     left.style.flexDirection = "column";
@@ -1055,46 +1056,57 @@ function renderVoicemails(items){
 
     const main = document.createElement("div");
     main.style.fontWeight = 700;
-    main.innerText = showE164(vm.from_number || "");
+    // Show the caller (From)
+    main.innerText = showE164(vm.from_number || vm.from || "");
 
     const sub = document.createElement("div");
     sub.className = "muted";
     sub.style.fontSize = "12px";
-    sub.innerText = new Date(vm.created_at || Date.now()).toLocaleString();
+
+    const toNumber = showE164(vm.to_number || vm.to || "");
+    const ts = new Date(vm.created_at || vm.timestamp || Date.now()).toLocaleString();
+    sub.innerText = `To ${toNumber} · ${ts}`;
 
     left.appendChild(badge);
     left.appendChild(main);
     left.appendChild(sub);
 
+    // RIGHT SIDE (Play + duration)
     const right = document.createElement("div");
     right.style.textAlign = "right";
 
+    const playBtn = document.createElement("button");
+    playBtn.className = "btn gray";
+    playBtn.style.padding = "6px 10px";
+    playBtn.type = "button";
+    playBtn.innerText = "▶ Play";
+
     playBtn.addEventListener("click", () => {
-  let url = (vm.recording_url || "").trim();
-  if (!url) {
-    alert("No recording URL available.");
-    return;
-  }
+      let url = (vm.recording_url || "").trim();
+      if (!url) {
+        alert("No recording URL available.");
+        return;
+      }
 
-  // recording_url looks like:
-  // https://api.twilio.com/2010-04-01/Accounts/AC.../Recordings/RE12345678901234567890123456789012
-  // we just need the last path segment ("RE...").
-  const parts = url.split("/");
-  const last = parts[parts.length - 1] || "";
-  const recordingSid = last.split("?")[0];  // in case Twilio ever adds query params
+      // recording_url looks like:
+      // https://api.twilio.com/2010-04-01/Accounts/AC.../Recordings/RExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      // We just need the last part (the RE... SID)
+      const parts = url.split("/");
+      const last = parts[parts.length - 1] || "";
+      const recordingSid = last.split("?")[0];
 
-  if (!recordingSid) {
-    alert("Could not parse recording SID.");
-    return;
-  }
+      if (!recordingSid) {
+        alert("Could not parse recording SID.");
+        return;
+      }
 
-  const audio = new Audio(`${API_BASE}/vm-audio/${recordingSid}`);
-  audio.play().catch(err => {
-    console.warn("Audio play failed", err);
-    alert("Unable to play voicemail on this device/browser.");
-  });
-});
-
+      // 🔊 Use your backend proxy – no Twilio login needed
+      const audio = new Audio(`${API_BASE}/vm-audio/${recordingSid}`);
+      audio.play().catch(err => {
+        console.warn("Audio play failed", err);
+        alert("Unable to play voicemail on this device/browser.");
+      });
+    });
 
     const dur = document.createElement("div");
     dur.style.marginTop = "6px";
@@ -1109,6 +1121,7 @@ function renderVoicemails(items){
     container.appendChild(div);
   });
 }
+
 
 
 /* ---------- polling ---------- */
