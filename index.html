@@ -1069,23 +1069,32 @@ function renderVoicemails(items){
     const right = document.createElement("div");
     right.style.textAlign = "right";
 
-    const playBtn = document.createElement("button");
-    playBtn.className = "btn gray";
-    playBtn.style.padding = "6px 10px";
-    playBtn.type = "button";
-    playBtn.innerText = "▶ Play";
     playBtn.addEventListener("click", () => {
-      const url = (vm.recording_url || "").trim();
-      if (!url) {
-        alert("No recording URL available.");
-        return;
-      }
-      const audio = new Audio(url + ".mp3");
-      audio.play().catch(err => {
-        console.warn("Audio play failed", err);
-        alert("Unable to play voicemail on this device/browser.");
-      });
-    });
+  let url = (vm.recording_url || "").trim();
+  if (!url) {
+    alert("No recording URL available.");
+    return;
+  }
+
+  // recording_url looks like:
+  // https://api.twilio.com/2010-04-01/Accounts/AC.../Recordings/RE12345678901234567890123456789012
+  // we just need the last path segment ("RE...").
+  const parts = url.split("/");
+  const last = parts[parts.length - 1] || "";
+  const recordingSid = last.split("?")[0];  // in case Twilio ever adds query params
+
+  if (!recordingSid) {
+    alert("Could not parse recording SID.");
+    return;
+  }
+
+  const audio = new Audio(`${API_BASE}/vm-audio/${recordingSid}`);
+  audio.play().catch(err => {
+    console.warn("Audio play failed", err);
+    alert("Unable to play voicemail on this device/browser.");
+  });
+});
+
 
     const dur = document.createElement("div");
     dur.style.marginTop = "6px";
