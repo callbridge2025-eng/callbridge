@@ -7,6 +7,9 @@ google-auth-httplib2==0.2.0
 twilio==9.2.3
 gunicorn==23.0.0
 phonenumbers
+requests
+
+
 
 
 
