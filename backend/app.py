@@ -794,20 +794,30 @@ def get_voicemails():
 
         viewer = find_user_by_email(auth_email)
         is_admin = False
-        if viewer and str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
-            is_admin = True
+        viewer_assigned = ""
+        if viewer:
+            viewer_assigned = to_e164(viewer.get("assigned_number") or "")
+            if str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
+                is_admin = True
 
         rows = voicemails_ws.get_all_records()
         items = []
         for r in rows:
             row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
-            if is_admin or row_email == auth_email:
+            to_num = to_e164(r.get("To") or r.get("to") or "")
+            # show if:
+            # - admin
+            # - or row is explicitly tagged to this email
+            # - or the "To" number matches this user's assigned number
+            if is_admin or row_email == auth_email or (viewer_assigned and to_num == viewer_assigned):
                 items.append({
                     "created_at": r.get("Timestamp") or r.get("timestamp"),
                     "from_number": r.get("From") or r.get("from"),
                     "to_number": r.get("To") or r.get("to"),
                     "recording_url": r.get("RecordingUrl") or r.get("Recording URL") or r.get("recording_url"),
-                    "duration": _coerce_int(r.get("Duration") or r.get("duration") or r.get("RecordingDuration") or 0),
+                    "duration": _coerce_int(
+                        r.get("Duration") or r.get("duration") or r.get("RecordingDuration") or 0
+                    ),
                 })
 
         items = list(reversed(items))
@@ -818,12 +828,9 @@ def get_voicemails():
 
 
 
+
 @app.route("/vm-recording", methods=["POST"])
 def vm_recording():
-    """
-    Recording status callback from Twilio <Record>.
-    We store voicemail info into the Voicemails sheet.
-    """
     try:
         data = request.values
         from_raw = data.get("From") or ""
@@ -848,8 +855,6 @@ def vm_recording():
         print("vm-recording error:", e)
 
     return ("", 204)
-
-
 
 
 
