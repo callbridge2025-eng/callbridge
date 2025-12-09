@@ -716,31 +716,58 @@ def send_sms():
             return json_cors({"error": "Twilio credentials not configured"}, 500)
 
         data = request.get_json(force=True) or {}
-        to = data.get("to")
+        raw_to = data.get("to")
         body = data.get("body")
         user_email = request.args.get("email") or data.get("user_email") or ""
 
-        if not to or not body:
+        if not raw_to or not body:
             return json_cors({"error": "Missing 'to' or 'body'."}, 400)
+
+        # ✅ Normalize destination number to E.164
+        to_number = to_e164(str(raw_to))
+        if not to_number:
+            return json_cors(
+                {"error": "Destination number is invalid. Use a full number like +18033466904."},
+                400,
+            )
+
+        # ✅ Also make sure FROM is properly formatted
+        from_number = to_e164(str(TWILIO_SMS_FROM))
+        if not from_number:
+            print("ERROR: TWILIO_SMS_FROM is not a valid E.164 number:", TWILIO_SMS_FROM)
+            return json_cors({"error": "TWILIO_SMS_FROM misconfigured on server"}, 500)
 
         # ---- Send SMS via Twilio ----
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        msg = client.messages.create(
-            from_=TWILIO_SMS_FROM,
-            to=to,
-            body=body,
-        )
+
+        try:
+            msg = client.messages.create(
+                from_=from_number,
+                to=to_number,
+                body=body,
+            )
+        except TwilioException as te:
+            # 🔍 Surface Twilio's real error message to the frontend
+            print("❌ TwilioException in /send-sms:", te)
+            return json_cors(
+                {
+                    "error": f"Twilio error: {str(te)}. "
+                             "Check that the 'to' number is valid & SMS-capable, "
+                             "and that your Twilio number can send to it."
+                },
+                400,
+            )
+
         print("✅ SMS sent, SID:", msg.sid)
 
         # ---- Log to Google Sheet (SMSLogs tab) ----
         try:
-            # assuming you already have `sh = gspread_client.open_by_key(...)`
             ws_sms = sh.worksheet("SMSLogs")
             ws_sms.append_row([
                 datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 "outgoing",            # Direction
-                TWILIO_SMS_FROM,       # From
-                to,                    # To
+                from_number,           # From
+                to_number,             # To
                 body,                  # Body
                 user_email,            # User Email
                 "sent",                # Status
@@ -752,8 +779,9 @@ def send_sms():
         return json_cors({"status": "ok", "sid": msg.sid}, 200)
 
     except Exception as e:
-        print("❌ Error in /send-sms:", e, traceback.format_exc())
+        print("❌ Error in /send-sms (unexpected):", e, traceback.format_exc())
         return json_cors({"error": "Failed to send SMS"}, 500)
+
 
 
 
