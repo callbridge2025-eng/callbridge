@@ -706,72 +706,59 @@ def send_sms():
         return json_cors({"ok": True}, 200)
 
     try:
-        # ---- Validate config ----
-        if not TWILIO_SMS_FROM:
-            print("ERROR: TWILIO_SMS_FROM not configured")
-            return json_cors({"error": "TWILIO_SMS_FROM not configured"}, 500)
-
+        # ---- Validate Twilio creds ----
         if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN):
             print("ERROR: Twilio credentials missing")
             return json_cors({"error": "Twilio credentials not configured"}, 500)
 
         data = request.get_json(force=True) or {}
-        raw_to = data.get("to")
+        to_raw = data.get("to")
         body = data.get("body")
-        user_email = request.args.get("email") or data.get("user_email") or ""
 
-        if not raw_to or not body:
+        # who is sending?
+        auth_email = auth_from_token(request.headers.get("Authorization", "")) \
+                     or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
+        user_email = (data.get("user_email") or auth_email or "").strip().lower()
+
+        if not to_raw or not body:
             return json_cors({"error": "Missing 'to' or 'body'."}, 400)
 
-        # ✅ Normalize destination number to E.164
-        to_number = to_e164(str(raw_to))
-        if not to_number:
-            return json_cors(
-                {"error": "Destination number is invalid. Use a full number like +18033466904."},
-                400,
-            )
+        # ---- Resolve user and from-number ----
+        user = find_user_by_email(user_email) if user_email else None
+        assigned_from = None
+        if user and user.get("assigned_number"):
+            assigned_from = to_e164(user.get("assigned_number"))
 
-        # ✅ Also make sure FROM is properly formatted
-        from_number = to_e164(str(TWILIO_SMS_FROM))
+        # fallback to env number if no assigned
+        from_number = assigned_from or TWILIO_SMS_FROM
+
         if not from_number:
-            print("ERROR: TWILIO_SMS_FROM is not a valid E.164 number:", TWILIO_SMS_FROM)
-            return json_cors({"error": "TWILIO_SMS_FROM misconfigured on server"}, 500)
+            print("ERROR: No from_number available (no assigned_number, no TWILIO_SMS_FROM)")
+            return json_cors({"error": "No SMS from number configured"}, 500)
+
+        to_number = to_e164(to_raw)
 
         # ---- Send SMS via Twilio ----
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-
-        try:
-            msg = client.messages.create(
-                from_=from_number,
-                to=to_number,
-                body=body,
-            )
-        except TwilioException as te:
-            # 🔍 Surface Twilio's real error message to the frontend
-            print("❌ TwilioException in /send-sms:", te)
-            return json_cors(
-                {
-                    "error": f"Twilio error: {str(te)}. "
-                             "Check that the 'to' number is valid & SMS-capable, "
-                             "and that your Twilio number can send to it."
-                },
-                400,
-            )
-
-        print("✅ SMS sent, SID:", msg.sid)
+        msg = client.messages.create(
+            from_=from_number,
+            to=to_number,
+            body=body,
+        )
+        print(f"✅ SMS sent from {from_number} to {to_number}, SID: {msg.sid}")
 
         # ---- Log to Google Sheet (SMSLogs tab) ----
         try:
             ws_sms = sh.worksheet("SMSLogs")
             ws_sms.append_row([
                 datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                "outgoing",            # Direction
-                from_number,           # From
-                to_number,             # To
-                body,                  # Body
-                user_email,            # User Email
-                "sent",                # Status
-                msg.sid                # SID
+                "outgoing",          # Direction
+                from_number,         # From (assigned number or fallback)
+                to_number,           # To
+                body,                # Body
+                user_email,          # User Email (owner in app)
+                "sent",              # Status
+                msg.sid              # SID
             ])
         except Exception as e:
             print("⚠️ Failed to write to SMSLogs:", e, traceback.format_exc())
@@ -779,10 +766,8 @@ def send_sms():
         return json_cors({"status": "ok", "sid": msg.sid}, 200)
 
     except Exception as e:
-        print("❌ Error in /send-sms (unexpected):", e, traceback.format_exc())
+        print("❌ Error in /send-sms:", e, traceback.format_exc())
         return json_cors({"error": "Failed to send SMS"}, 500)
-
-
 
 
 
