@@ -897,41 +897,6 @@ def vm_recording():
 
 
 
-@app.route("/vm-audio/<recording_sid>", methods=["GET"])
-def vm_audio(recording_sid):
-    """
-    Proxy Twilio recording audio so the browser does NOT see Twilio's
-    protected URL and does NOT ask for username/password.
-    We fetch with Twilio credentials server-side and return audio/mpeg.
-    """
-    try:
-        account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-        auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-        if not account_sid or not auth_token:
-            return jsonify({"error": "Twilio credentials missing"}), 500
-
-        # Build Twilio recording URL for the .mp3
-        twilio_url = (
-            f"https://api.twilio.com/2010-04-01/Accounts/"
-            f"{account_sid}/Recordings/{recording_sid}.mp3"
-        )
-
-        r = requests.get(twilio_url, auth=(account_sid, auth_token), stream=True)
-        if r.status_code != 200:
-            print("vm_audio Twilio fetch error", r.status_code, r.text[:200])
-            return jsonify({"error": f"Could not fetch recording (status {r.status_code})"}), 502
-
-        resp = make_response(r.content)
-        resp.headers["Content-Type"] = "audio/mpeg"
-        resp.headers["Content-Length"] = str(len(r.content))
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": "Failed to fetch recording"}), 500
-
-
-
 @app.route("/vm-audio/<rec_sid>", methods=["GET"])
 def vm_audio(rec_sid):
     """
