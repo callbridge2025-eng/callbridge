@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import os, secrets, time, traceback
+import requests  # <-- add this
 
 # Google Sheets
 import gspread
@@ -859,42 +860,71 @@ def vm_recording():
     """
     Recording status callback from Twilio <Record>.
     We store voicemail info into the Voicemails sheet.
+    Tries multiple possible field names for From/To to avoid blanks.
     """
     try:
-        data = request.values
+        data = request.values.to_dict()
+        print("[VM RECORDING]", data)
 
-        from_raw = data.get("From") or ""
-        called_raw = data.get("Called") or data.get("To") or ""
+        # Try several possible keys that Twilio might send
+        from_raw = _get_first_key(data, ["From", "Caller", "CallFrom"]) or ""
+        called_raw = _get_first_key(data, ["To", "Called", "CallTo", "Dialed"]) or ""
+
         rec_url = data.get("RecordingUrl") or ""
         duration = _coerce_int(data.get("RecordingDuration"), 0)
 
         from_e164 = to_e164(from_raw)
         called_e164 = to_e164(called_raw)
 
-        # Find which user owns the called number
+        # Map called number to user (so user_email column is filled)
         user = find_user_by_assigned_number(called_e164)
         user_email = (user or {}).get("email") or ""
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # IMPORTANT: write ALL headers you have in Voicemails sheet:
-        # Timestamp | From | To | RecordingUrl | Duration | User Email | Status
         append_row_raw(
             voicemails_ws,
-            [timestamp, from_e164, called_e164, rec_url, duration, user_email, "new"]
+            [timestamp, from_e164, called_e164, rec_url, duration, user_email]
         )
-
-        print(
-            f"[VM RECORDING] saved voicemail "
-            f"from={from_e164} to={called_e164} user={user_email} url={rec_url}"
-        )
-
+        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} url={rec_url} user={user_email}")
     except Exception as e:
         print("vm-recording error:", e)
 
     return ("", 204)
 
 
+@app.route("/vm-audio/<recording_sid>", methods=["GET"])
+def vm_audio(recording_sid):
+    """
+    Proxy Twilio recording audio so the browser does NOT see Twilio's
+    protected URL and does NOT ask for username/password.
+    We fetch with Twilio credentials server-side and return audio/mpeg.
+    """
+    try:
+        account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+        auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+        if not account_sid or not auth_token:
+            return jsonify({"error": "Twilio credentials missing"}), 500
+
+        # Build Twilio recording URL for the .mp3
+        twilio_url = (
+            f"https://api.twilio.com/2010-04-01/Accounts/"
+            f"{account_sid}/Recordings/{recording_sid}.mp3"
+        )
+
+        r = requests.get(twilio_url, auth=(account_sid, auth_token), stream=True)
+        if r.status_code != 200:
+            print("vm_audio Twilio fetch error", r.status_code, r.text[:200])
+            return jsonify({"error": f"Could not fetch recording (status {r.status_code})"}), 502
+
+        resp = make_response(r.content)
+        resp.headers["Content-Type"] = "audio/mpeg"
+        resp.headers["Content-Length"] = str(len(r.content))
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Failed to fetch recording"}), 500
 
 
 
