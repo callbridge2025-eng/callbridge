@@ -90,10 +90,10 @@ def find_user_by_assigned_number(num):
     try:
         if not num:
             return None
-        target = to_e164(str(num), default_region='US')
+        target = to_e164(str(num))
         rows = users_ws.get_all_records()
         for r in rows:
-            assigned = to_e164(str(r.get("Assigned Number", "")).strip(), default_region='US')
+            assigned = to_e164(str(r.get("Assigned Number", "")).strip())
             if assigned and assigned == target:
                 return {
                     "id": r.get("Email"),
@@ -106,6 +106,7 @@ def find_user_by_assigned_number(num):
     except Exception:
         traceback.print_exc()
     return None
+
 
 def _https_url(url, req):
     proto = req.headers.get("X-Forwarded-Proto", "https")
@@ -148,21 +149,41 @@ def _get_first_key(d: dict, candidates):
 
 # --- Phone normalization & Sheets RAW append ---
 
-def to_e164(num: str, default_region='US') -> str:
-    """Return E.164 (+14155551234). If empty/invalid, return original unchanged."""
+def to_e164(num: str) -> str:
+    """
+    Very simple, multi-country normalizer.
+    - Keeps/creates E.164 like +441234567890
+    - Does NOT guess country (no US default).
+    - You MUST store numbers in sheet as +<countrycode><number>.
+    """
     if not num:
-        return num
-    n = str(num).strip()
-    try:
-        # If user typed 10 digits, treat as US and add +1
-        if n.isdigit() and len(n) == 10 and default_region == 'US':
-            n = f"+1{n}"
-        parsed = phonenumbers.parse(n, default_region)
-        if phonenumbers.is_valid_number(parsed):
-            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-    except Exception:
-        pass
-    return n  # leave as-is if we can't parse
+        return ""
+
+    s = str(num).strip()
+    if s == "":
+        return ""
+
+    # Remove spaces, dashes, etc.
+    digits_plus = "".join(ch for ch in s if ch.isdigit() or ch == "+")
+
+    # If already like +123..., just keep + and digits
+    if digits_plus.startswith("+"):
+        # Ensure only one leading + and then digits
+        digits = "".join(ch for ch in digits_plus[1:] if ch.isdigit())
+        return "+" + digits if digits else ""
+
+    # If starts with 00 (international format), convert to +...
+    if digits_plus.startswith("00"):
+        digits = "".join(ch for ch in digits_plus[2:] if ch.isdigit())
+        return "+" + digits if digits else ""
+
+    # Otherwise: assume the string already has full country code,
+    # just add +
+    digits = "".join(ch for ch in digits_plus if ch.isdigit())
+    if not digits:
+        return ""
+    return "+" + digits
+
 
 def append_row_raw(ws, row):
     """Append exactly-as-given values (keeps + in Google Sheets)."""
@@ -352,8 +373,8 @@ def save_call():
         user_email = auth_email or data.get("user_email") or data.get("user_id") or data.get("user") or ""
 
         # normalize phone numbers and save RAW to keep '+'
-        from_num_e164 = to_e164(from_num, default_region='US')
-        to_num_e164   = to_e164(to_num,   default_region='US')
+        from_num_e164 = to_e164(from_num)
+        to_num_e164   = to_e164(to_num)
 
         append_row_raw(
             calls_ws,
@@ -400,7 +421,7 @@ def twilio_token():
 
         user = find_user_by_email(user_id)
         raw_caller = user.get("assigned_number") if user else os.environ.get("TWILIO_PHONE_NUMBER")
-        caller_id = to_e164(raw_caller, default_region='US')
+        caller_id = to_e164(raw_caller)
 
         return jsonify({"token": jwt, "callerId": caller_id})
     except Exception as e:
@@ -432,8 +453,8 @@ def voice():
             user = find_user_by_email(identity) if identity else None
             user_assigned = (user or {}).get("assigned_number") if user else None
 
-            caller_id = to_e164(requested_caller or user_assigned or default_caller_id, default_region='US')
-            outbound_to = to_e164(outbound_to, default_region='US')
+            caller_id = to_e164(requested_caller or user_assigned or default_caller_id)
+            outbound_to = to_e164(outbound_to)
 
             print(f"[VOICE OUTBOUND] identity={identity!r} caller_id={caller_id} to={outbound_to}")
 
@@ -453,8 +474,8 @@ def voice():
             # ===== INCOMING: PSTN -> client =====
             called_raw = request.values.get("Called") or request.values.get("To") or ""
             caller_raw = request.values.get("Caller") or request.values.get("From") or ""
-            called_e164 = to_e164(called_raw, default_region='US')
-            caller_e164 = to_e164(caller_raw, default_region='US')
+            called_e164 = to_e164(called_raw)
+            caller_e164 = to_e164(caller_raw)
 
             print(f"[VOICE INBOUND] Called(raw)={called_raw} -> {called_e164} | From(raw)={caller_raw} -> {caller_e164}")
 
@@ -519,11 +540,11 @@ def client_status():
                 u = find_user_by_email(identity)
                 if u:
                     user_email = u.get("email") or ""
-                    assigned_e164 = to_e164(u.get("assigned_number") or "", default_region="US")
+                    assigned_e164 = to_e164(u.get("assigned_number") or "")
 
             # Fallback: if we didn't resolve the user, still write a row with whatever we have
-            from_e164 = to_e164(from_number_raw, default_region="US")
-            to_e164_num = assigned_e164 or to_e164(to_raw, default_region="US")
+            from_e164 = to_e164(from_number_raw)
+            to_e164_num = assigned_e164 or to_e164(to_raw)
 
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             append_row_raw(
@@ -563,8 +584,8 @@ def dial_action():
         called_raw = data.get("Called") or data.get("To") or ""   # Twilio DID on parent leg
 
         # Normalize numbers
-        from_e164 = to_e164(from_raw,  default_region="US")
-        called_e164 = to_e164(called_raw, default_region="US")
+        from_e164 = to_e164(from_raw)
+        called_e164 = to_e164(called_raw)
 
         # Map the Twilio DID -> user
         user = find_user_by_assigned_number(called_e164)
