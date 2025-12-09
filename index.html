@@ -561,7 +561,6 @@ async function startCall(){
     const conn = device.connect({ params: { To: number } });
     activeConn = conn || null;
 
-    $("dialpadArea").style.display = "none";
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
     inCall = true;   // <-- NEW
