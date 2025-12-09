@@ -615,18 +615,24 @@ def dial_action():
         )
         print(f"[DIAL ACTION] Missed call logged: from={from_e164} to={called_e164} user={user_email}")
 
-                # Now send caller to voicemail
+        # Build voicemail recording callback URL and *include* from/to/user_email in query
+        qs = urllib.parse.urlencode({
+            "from": from_e164,
+            "to": called_e164,
+            "user_email": user_email
+        })
+        cb_url = _https_url(
+            f"{request.url_root.rstrip('/')}/vm-recording?{qs}",
+            request
+        )
+
+        # Now send caller to voicemail
         resp = VoiceResponse()
         resp.say(
             "Sorry, the person you are calling can't take your call right now. "
             "Please leave a message after the tone, then press the pound key.",
             voice="alice"
         )
-
-        # Build callback URL and pass caller / callee / user_email as query params
-        base_cb = _https_url(f"{request.url_root.rstrip('/')}/vm-recording", request)
-        cb_url = f"{base_cb}?from={from_e164}&to={called_e164}&user_email={user_email}"
-
         resp.record(
             max_length=120,
             play_beep=True,
@@ -861,27 +867,24 @@ def vm_recording():
     """
     Recording status callback from Twilio <Record>.
     We store voicemail info into the Voicemails sheet.
-    We prefer the query params (from/to/user_email) that we attached in /dial-action.
+
+    /dial-action adds from/to/user_email as query params, so we always
+    know who the voicemail belongs to even if Twilio doesn't send From/To.
     """
     try:
         data = request.values
 
-        # First, try query-string values we passed from /dial-action
+        # From/To first from query string (set in /dial-action), fallback to body (if Twilio sends them)
         from_raw = request.args.get("from") or data.get("From") or ""
         called_raw = request.args.get("to") or data.get("Called") or data.get("To") or ""
+
+        user_email = request.args.get("user_email") or ""
+
         rec_url = data.get("RecordingUrl") or ""
         duration = _coerce_int(data.get("RecordingDuration"), 0)
 
-        # User email – prefer what /dial-action passed
-        user_email = (request.args.get("user_email") or "").strip().lower()
-
         from_e164 = to_e164(from_raw)
         called_e164 = to_e164(called_raw)
-
-        # If we still don't have a user_email, try to map by 'To' number
-        if not user_email:
-            user = find_user_by_assigned_number(called_e164)
-            user_email = ((user or {}).get("email") or "").strip().lower()
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -889,9 +892,10 @@ def vm_recording():
             voicemails_ws,
             [timestamp, from_e164, called_e164, rec_url, duration, user_email]
         )
-        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} user={user_email} url={rec_url}")
+        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} url={rec_url} user={user_email}")
     except Exception as e:
         print("vm-recording error:", e)
+        traceback.print_exc()
 
     return ("", 204)
 
@@ -901,33 +905,29 @@ def vm_recording():
 @app.route("/vm-audio/<rec_sid>", methods=["GET"])
 def vm_audio(rec_sid):
     """
-    Simple proxy for Twilio recording audio.
-    Browser calls this; we fetch from Twilio with ACCOUNT_SID/AUTH_TOKEN
-    so the user doesn't need to log in to Twilio.
+    Public endpoint to stream voicemail audio without showing Twilio login.
+    Frontend will call:  /vm-audio/<RecordingSid>
     """
     try:
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
         auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+
         if not account_sid or not auth_token:
-            return jsonify({"error": "Twilio credentials missing"}), 500
+            return "Twilio credentials missing", 500
 
-        twilio_url = (
-            f"https://api.twilio.com/2010-04-01/Accounts/"
-            f"{account_sid}/Recordings/{rec_sid}.mp3"
-        )
+        # Twilio MP3 URL for the recording
+        twilio_url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Recordings/{rec_sid}.mp3"
 
-        r = requests.get(twilio_url, auth=(account_sid, auth_token), stream=True, timeout=20)
+        r = requests.get(twilio_url, auth=(account_sid, auth_token), stream=True)
         if r.status_code != 200:
-            print("vm-audio Twilio error:", r.status_code, r.text[:200])
-            return jsonify({"error": "Failed to fetch recording"}), 502
+            return f"Error from Twilio: {r.status_code}", 502
 
-        resp = make_response(r.content)
-        resp.headers["Content-Type"] = "audio/mpeg"
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
+        # Stream audio to browser
+        return Response(r.iter_content(chunk_size=4096), content_type="audio/mpeg")
+
     except Exception as e:
-        print("vm-audio error:", e)
-        return jsonify({"error": "Internal error"}), 500
+        traceback.print_exc()
+        return "Server error", 500
 
 
 
