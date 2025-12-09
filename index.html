@@ -1078,15 +1078,17 @@ document.addEventListener("click", (e) => {
   if (!k) return;
 
   const digit = k.getAttribute("data-key") || "";
-  // keep old behavior: update dial input
-  $("dialInput").value += digit;
 
-  // NEW: send DTMF if we are in an active call
-  // Twilio accepts 0-9, *, #, w — there is no '+' DTMF tone
+  // If NOT in a call: normal behavior, type into the input box
+  if (!inCall) {
+    $("dialInput").value += digit;
+  }
+
+  // If IN a call: send DTMF tones, do NOT touch the input
   if (inCall && activeConn && typeof activeConn.sendDigits === "function") {
+    // Twilio supports 0-9, *, #, w — there is no DTMF for "+"
     if (digit === "+") {
-      // no DTMF for +, so just ignore for tones
-      return;
+      return; // ignore "+" during active call
     }
     try {
       activeConn.sendDigits(digit);
