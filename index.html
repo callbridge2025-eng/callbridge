@@ -1131,7 +1131,9 @@ document.addEventListener("click", (e) => {
   }
 });
 
-
+return; // don't touch the dial input while in-call
+  }
+  
   // No active connected call → behave like normal dialpad
   $("dialInput").value += digit;
 });
