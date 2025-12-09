@@ -679,90 +679,82 @@ def vm_screen():
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
 
+from twilio.rest import Client
+from datetime import datetime
+import os, traceback, json
+from flask import request, make_response
+
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_SMS_FROM    = os.environ.get("TWILIO_SMS_FROM")  # your sending number
+
+
+def json_cors(data, status=200):
+    """Small helper to return JSON with CORS."""
+    resp = make_response(json.dumps(data), status)
+    resp.headers["Content-Type"] = "application/json"
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return resp
+
+
 @app.route("/send-sms", methods=["POST", "OPTIONS"])
 def send_sms():
-    # CORS preflight
+    # Handle preflight
     if request.method == "OPTIONS":
-        return make_response(("", 200, {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        }))
+        return json_cors({"ok": True}, 200)
 
     try:
-        # --- basic config checks ---
+        # ---- Validate config ----
+        if not TWILIO_SMS_FROM:
+            print("ERROR: TWILIO_SMS_FROM not configured")
+            return json_cors({"error": "TWILIO_SMS_FROM not configured"}, 500)
+
         if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN):
-            return jsonify({"error": "Twilio credentials not configured on server"}), 500
+            print("ERROR: Twilio credentials missing")
+            return json_cors({"error": "Twilio credentials not configured"}, 500)
 
-        # Choose how we send SMS: Messaging Service SID (preferred) OR From number
-        use_kwargs = {}
-        if TWILIO_SMS_SERVICE_SID:
-            use_kwargs["messaging_service_sid"] = TWILIO_SMS_SERVICE_SID
-        elif TWILIO_SMS_FROM:
-            use_kwargs["from_"] = TWILIO_SMS_FROM
-        else:
-            return jsonify({
-                "error": "TWILIO_SMS_FROM or TWILIO_SMS_SERVICE_SID not configured on server"
-            }), 500
-
-        # --- parse input from frontend ---
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(force=True) or {}
         to = data.get("to")
         body = data.get("body")
-        user_email = request.args.get("email")  # from ?email=... in frontend
+        user_email = request.args.get("email") or data.get("user_email") or ""
 
         if not to or not body:
-            return jsonify({"error": "Missing 'to' or 'body'"}), 400
+            return json_cors({"error": "Missing 'to' or 'body'."}, 400)
 
-        # --- normalise phone number a bit (optional) ---
-        to = str(to).strip()
-
-        # --- send SMS via Twilio ---
+        # ---- Send SMS via Twilio ----
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-
         msg = client.messages.create(
+            from_=TWILIO_SMS_FROM,
             to=to,
             body=body,
-            **use_kwargs
         )
+        print("✅ SMS sent, SID:", msg.sid)
 
-        # --- log to your Google Sheet (reuse your existing helper here) ---
+        # ---- Log to Google Sheet (SMSLogs tab) ----
         try:
-            # Example – adjust to your actual sheet helper and columns
-            # add_sms_log(timestamp, direction, from, to, body, user_email, status, sid)
-            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-            status = getattr(msg, "status", "queued")
-            sid = getattr(msg, "sid", "")
-
-            # If you already have a function like append_sms_row(...) – call that instead:
-            sms_sheet = get_sms_sheet()  # <- use your own helper if different
-            sms_sheet.append_row([
-                timestamp,
-                "outgoing",
-                TWILIO_SMS_FROM or "",
-                to,
-                body,
-                user_email or "",
-                status,
-                sid,
+            # assuming you already have `sh = gspread_client.open_by_key(...)`
+            ws_sms = sh.worksheet("SMSLogs")
+            ws_sms.append_row([
+                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "outgoing",            # Direction
+                TWILIO_SMS_FROM,       # From
+                to,                    # To
+                body,                  # Body
+                user_email,            # User Email
+                "sent",                # Status
+                msg.sid                # SID
             ])
-        except Exception as log_err:
-            app.logger.warning(f"Failed to log SMS to sheet: {log_err}")
+        except Exception as e:
+            print("⚠️ Failed to write to SMSLogs:", e, traceback.format_exc())
 
-        # --- success response back to frontend ---
-        return jsonify({
-            "sid": msg.sid,
-            "status": msg.status,
-            "to": msg.to,
-        })
+        return json_cors({"status": "ok", "sid": msg.sid}, 200)
 
     except Exception as e:
-        # This will show full traceback in Render logs
-        app.logger.exception("Error in /send-sms")
-        return jsonify({
-            "error": "Failed to send SMS",
-            "details": str(e)
-        }), 500
+        print("❌ Error in /send-sms:", e, traceback.format_exc())
+        return json_cors({"error": "Failed to send SMS"}, 500)
+
 
 
 
