@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import os, secrets, time, traceback
-import requests  # <-- add this
+import requests
+from flask import Response
+
 
 # Google Sheets
 import gspread
@@ -612,18 +614,23 @@ def dial_action():
         )
         print(f"[DIAL ACTION] Missed call logged: from={from_e164} to={called_e164} user={user_email}")
 
-        # Now send caller to voicemail
+                # Now send caller to voicemail
         resp = VoiceResponse()
         resp.say(
             "Sorry, the person you are calling can't take your call right now. "
             "Please leave a message after the tone, then press the pound key.",
             voice="alice"
         )
+
+        # Build callback URL and pass caller / callee / user_email as query params
+        base_cb = _https_url(f"{request.url_root.rstrip('/')}/vm-recording", request)
+        cb_url = f"{base_cb}?from={from_e164}&to={called_e164}&user_email={user_email}"
+
         resp.record(
             max_length=120,
             play_beep=True,
             finish_on_key="#",
-            recording_status_callback=_https_url(f"{request.url_root.rstrip('/')}/vm-recording", request),
+            recording_status_callback=cb_url,
             recording_status_callback_method="POST"
         )
         resp.hangup()
@@ -853,61 +860,40 @@ def vm_recording():
     """
     Recording status callback from Twilio <Record>.
     We store voicemail info into the Voicemails sheet.
-
-    We now:
-    - Try to read From / To from callback params.
-    - If missing, fetch the parent Call from Twilio using CallSid.
-    - Resolve user by the called number (your Twilio / assigned number).
-    - Store Status as well (e.g. completed).
+    We prefer the query params (from/to/user_email) that we attached in /dial-action.
     """
     try:
         data = request.values
-        print("[VM RECORDING] raw callback:", dict(data))
 
-        # 1) Try to get numbers from the callback itself
-        from_raw = data.get("From") or data.get("Caller") or ""
-        called_raw = data.get("Called") or data.get("To") or ""
-
-        # 2) If missing, try to fetch the parent call from Twilio
-        if (not from_raw or not called_raw) and data.get("CallSid"):
-            try:
-                client = get_twilio_client()
-                call_sid = data.get("CallSid")
-                call = client.calls(call_sid).fetch()
-                if not from_raw:
-                    from_raw = call.from_ or ""
-                if not called_raw:
-                    called_raw = call.to or ""
-                print(f"[VM RECORDING] Fetched call {call_sid}: from={from_raw}, to={called_raw}")
-            except Exception as e:
-                print("vm-recording: failed to fetch call details:", e)
-
+        # First, try query-string values we passed from /dial-action
+        from_raw = request.args.get("from") or data.get("From") or ""
+        called_raw = request.args.get("to") or data.get("Called") or data.get("To") or ""
         rec_url = data.get("RecordingUrl") or ""
         duration = _coerce_int(data.get("RecordingDuration"), 0)
-        status = data.get("RecordingStatus") or "new"
 
-        # Normalize numbers
+        # User email – prefer what /dial-action passed
+        user_email = (request.args.get("user_email") or "").strip().lower()
+
         from_e164 = to_e164(from_raw)
         called_e164 = to_e164(called_raw)
 
-        # Map called number -> user
-        user = find_user_by_assigned_number(called_e164)
-        user_email = (user or {}).get("email") or ""
+        # If we still don't have a user_email, try to map by 'To' number
+        if not user_email:
+            user = find_user_by_assigned_number(called_e164)
+            user_email = ((user or {}).get("email") or "").strip().lower()
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # IMPORTANT: match your sheet header:
-        # Timestamp | From | To | RecordingUrl | Duration | User Email | Status
         append_row_raw(
             voicemails_ws,
-            [timestamp, from_e164, called_e164, rec_url, duration, user_email, status]
+            [timestamp, from_e164, called_e164, rec_url, duration, user_email]
         )
-
-        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} user={user_email} url={rec_url} status={status}")
+        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} user={user_email} url={rec_url}")
     except Exception as e:
         print("vm-recording error:", e)
 
     return ("", 204)
+
 
 
 
@@ -943,6 +929,40 @@ def vm_audio(recording_sid):
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Failed to fetch recording"}), 500
+
+
+
+@app.route("/vm-audio/<rec_sid>", methods=["GET"])
+def vm_audio(rec_sid):
+    """
+    Simple proxy for Twilio recording audio.
+    Browser calls this; we fetch from Twilio with ACCOUNT_SID/AUTH_TOKEN
+    so the user doesn't need to log in to Twilio.
+    """
+    try:
+        account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+        auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+        if not account_sid or not auth_token:
+            return jsonify({"error": "Twilio credentials missing"}), 500
+
+        twilio_url = (
+            f"https://api.twilio.com/2010-04-01/Accounts/"
+            f"{account_sid}/Recordings/{rec_sid}.mp3"
+        )
+
+        r = requests.get(twilio_url, auth=(account_sid, auth_token), stream=True, timeout=20)
+        if r.status_code != 200:
+            print("vm-audio Twilio error:", r.status_code, r.text[:200])
+            return jsonify({"error": "Failed to fetch recording"}), 502
+
+        resp = make_response(r.content)
+        resp.headers["Content-Type"] = "audio/mpeg"
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+    except Exception as e:
+        print("vm-audio error:", e)
+        return jsonify({"error": "Internal error"}), 500
+
 
 
 
