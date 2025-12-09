@@ -11,6 +11,8 @@ from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
 from twilio.twiml.voice_response import VoiceResponse, Dial
 import phonenumbers  # pip install phonenumbers
+from twilio.rest import Client  # <-- NEW for SMS
+
 
 # ---------------- Flask App ----------------
 app = Flask(__name__)
@@ -48,6 +50,8 @@ try:
     sh = gc.open_by_url(SHEET_URL)
     users_ws = sh.worksheet("Users")
     calls_ws = sh.worksheet("CallLogs")
+    sms_ws = sh.worksheet("SMSLogs")
+    voicemails_ws = sh.worksheet("Voicemails")
 except Exception as e:
     print("Error initializing Google Sheets:", e)
     raise
@@ -189,6 +193,19 @@ def append_row_raw(ws, row):
     """Append exactly-as-given values (keeps + in Google Sheets)."""
     srow = ["" if v is None else str(v) for v in row]
     ws.append_row(srow, value_input_option='RAW')
+
+
+def get_twilio_client():
+    """
+    Simple helper to create Twilio REST client for SMS.
+    Uses TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN from env.
+    """
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    if not account_sid or not auth_token:
+        raise RuntimeError("Twilio SMS credentials missing (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN).")
+    return Client(account_sid, auth_token)
+
 
 
 # ---------------- Routes ----------------
@@ -508,7 +525,6 @@ def voice():
 
 
 
-
 @app.route("/client-status", methods=["POST"])
 def client_status():
     """
@@ -563,21 +579,17 @@ def client_status():
 def dial_action():
     """
     Called by Twilio after <Dial> finishes (we set 'action' on <Dial>).
-    On the parent call leg (PSTN -> Twilio), so parameters often look like:
-      - DialCallStatus: completed|no-answer|busy|failed  (final outcome)
-      - From:  +E164 caller
-      - Called: +E164 Twilio number that was originally called (your DID)
-      - To:     +E164 Twilio number (same as Called on parent leg)
-    We log a missed call when DialCallStatus is no-answer/busy/failed, and we
-    map the row to the user by the Twilio number (Called).
+    We log a missed call when DialCallStatus is no-answer/busy/failed, and
+    then send the caller to voicemail so they can leave a recording.
     """
     try:
         data = request.values.to_dict()
         print("[DIAL ACTION]", data)
 
         dial_status = (data.get("DialCallStatus") or "").lower()   # completed|no-answer|busy|failed
+
+        # If the client answered, do nothing special
         if dial_status not in {"no-answer", "busy", "failed"}:
-            # Nothing to log for answered calls
             return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
 
         from_raw = data.get("From") or ""
@@ -591,7 +603,7 @@ def dial_action():
         user = find_user_by_assigned_number(called_e164)
         user_email = (user or {}).get("email") or ""
 
-        # Write missed-call row
+        # Write missed-call row in CallLogs sheet
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         append_row_raw(
             calls_ws,
@@ -599,12 +611,28 @@ def dial_action():
         )
         print(f"[DIAL ACTION] Missed call logged: from={from_e164} to={called_e164} user={user_email}")
 
-        # Tiny TwiML response so Twilio ends cleanly
-        return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
+        # Now send caller to voicemail
+        resp = VoiceResponse()
+        resp.say(
+            "Sorry, the person you are calling can't take your call right now. "
+            "Please leave a message after the tone, then press the pound key.",
+            voice="alice"
+        )
+        resp.record(
+            max_length=120,
+            play_beep=True,
+            finish_on_key="#",
+            recording_status_callback=_https_url(f"{request.url_root.rstrip('/')}/vm-recording", request),
+            recording_status_callback_method="POST"
+        )
+        resp.hangup()
+
+        return str(resp), 200, {"Content-Type": "application/xml"}
 
     except Exception as e:
         print("dial-action error:", e)
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
+
 
 
 @app.post("/vm-screen")
@@ -631,6 +659,197 @@ def vm_screen():
         print("vm-screen error:", e)
         # Fail-open: let Twilio bridge
         return str(VoiceResponse()), 200, {"Content-Type": "application/xml"}
+
+
+@app.route("/send-sms", methods=["POST", "OPTIONS"])
+def send_sms():
+    if request.method == "OPTIONS":
+        return _ok_cors()
+    try:
+        data = request.get_json(force=True)
+        to_raw = data.get("to") or data.get("to_number")
+        body = data.get("body") or data.get("message")
+
+        if not to_raw or not body:
+            return jsonify({"error": "to and body are required"}), 400
+
+        # Resolve who is sending
+        auth_email = auth_from_token(request.headers.get("Authorization", "")) \
+                     or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
+
+        user = find_user_by_email(auth_email) if auth_email else None
+
+        # From: user's assigned number, fallback to env SMS/Twilio number
+        from_raw = (user or {}).get("assigned_number") \
+                   or os.environ.get("TWILIO_SMS_NUMBER") \
+                   or os.environ.get("TWILIO_PHONE_NUMBER")
+
+        from_e164 = to_e164(from_raw)
+        to_e164_num = to_e164(to_raw)
+
+        client = get_twilio_client()
+        msg = client.messages.create(
+            to=to_e164_num,
+            from_=from_e164,
+            body=body
+        )
+
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        user_email = auth_email or (user or {}).get("email") or ""
+
+        append_row_raw(
+            sms_ws,
+            [timestamp, "outgoing", from_e164, to_e164_num, body, user_email, msg.status or "queued", msg.sid]
+        )
+
+        return jsonify({"success": True, "sid": msg.sid}), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error"}), 500
+
+
+
+@app.route("/sms-logs", methods=["GET", "OPTIONS"])
+def sms_logs():
+    if request.method == "OPTIONS":
+        return _ok_cors()
+    try:
+        auth_email = auth_from_token(request.headers.get("Authorization", "")) \
+                     or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
+
+        if not auth_email:
+            # Same behavior as /calls – just return empty
+            return jsonify([])
+
+        viewer = find_user_by_email(auth_email)
+        is_admin = False
+        if viewer and str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
+            is_admin = True
+
+        rows = sms_ws.get_all_records()
+        items = []
+        for r in rows:
+            row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
+            if is_admin or row_email == auth_email:
+                items.append({
+                    "created_at": r.get("Timestamp") or r.get("timestamp"),
+                    "direction": r.get("Direction") or r.get("direction"),
+                    "from_number": r.get("From") or r.get("from"),
+                    "to_number": r.get("To") or r.get("to"),
+                    "body": r.get("Body") or r.get("body"),
+                    "status": r.get("Status") or r.get("status"),
+                    "sid": r.get("SID") or r.get("sid")
+                })
+
+        items = list(reversed(items))
+        return jsonify(items), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error"}), 500
+
+
+
+@app.route("/sms-webhook", methods=["POST"])
+def sms_webhook():
+    """
+    Twilio will POST here for inbound SMS.
+    Set this as the Messaging webhook URL for your Twilio number.
+    """
+    try:
+        from_raw = request.values.get("From") or ""
+        to_raw = request.values.get("To") or request.values.get("ToNumber") or ""
+        body = request.values.get("Body") or ""
+
+        from_e164 = to_e164(from_raw)
+        to_e164_num = to_e164(to_raw)
+
+        user = find_user_by_assigned_number(to_e164_num)
+        user_email = (user or {}).get("email") or ""
+
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        append_row_raw(
+            sms_ws,
+            [timestamp, "incoming", from_e164, to_e164_num, body, user_email, "received", ""]
+        )
+
+        print(f"[SMS INBOUND] from={from_e164} to={to_e164_num} user={user_email}")
+    except Exception as e:
+        print("sms-webhook error:", e)
+
+    # We don't auto-reply, just 204 OK
+    return ("", 204)
+
+
+@app.route("/voicemails", methods=["GET", "OPTIONS"])
+def get_voicemails():
+    if request.method == "OPTIONS":
+        return _ok_cors()
+    try:
+        auth_email = auth_from_token(request.headers.get("Authorization", "")) \
+                     or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
+
+        if not auth_email:
+            return jsonify([])
+
+        viewer = find_user_by_email(auth_email)
+        is_admin = False
+        if viewer and str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
+            is_admin = True
+
+        rows = voicemails_ws.get_all_records()
+        items = []
+        for r in rows:
+            row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
+            if is_admin or row_email == auth_email:
+                items.append({
+                    "created_at": r.get("Timestamp") or r.get("timestamp"),
+                    "from_number": r.get("From") or r.get("from"),
+                    "to_number": r.get("To") or r.get("to"),
+                    "recording_url": r.get("RecordingUrl") or r.get("Recording URL") or r.get("recording_url"),
+                    "duration": _coerce_int(r.get("Duration") or r.get("duration") or r.get("RecordingDuration") or 0),
+                })
+
+        items = list(reversed(items))
+        return jsonify(items), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error"}), 500
+
+
+
+@app.route("/vm-recording", methods=["POST"])
+def vm_recording():
+    """
+    Recording status callback from Twilio <Record>.
+    We store voicemail info into the Voicemails sheet.
+    """
+    try:
+        data = request.values
+        from_raw = data.get("From") or ""
+        called_raw = data.get("Called") or data.get("To") or ""
+        rec_url = data.get("RecordingUrl") or ""
+        duration = _coerce_int(data.get("RecordingDuration"), 0)
+
+        from_e164 = to_e164(from_raw)
+        called_e164 = to_e164(called_raw)
+
+        user = find_user_by_assigned_number(called_e164)
+        user_email = (user or {}).get("email") or ""
+
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        append_row_raw(
+            voicemails_ws,
+            [timestamp, from_e164, called_e164, rec_url, duration, user_email]
+        )
+        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} url={rec_url}")
+    except Exception as e:
+        print("vm-recording error:", e)
+
+    return ("", 204)
+
+
 
 
 
