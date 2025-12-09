@@ -790,38 +790,35 @@ def get_voicemails():
                      or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
 
         if not auth_email:
+            # Same behavior as /calls and /sms-logs: return empty list for unauthenticated / no identity
             return jsonify([])
 
         viewer = find_user_by_email(auth_email)
         is_admin = False
-        viewer_assigned = ""
-        if viewer:
-            viewer_assigned = to_e164(viewer.get("assigned_number") or "")
-            if str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
-                is_admin = True
+        if viewer and str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
+            is_admin = True
 
         rows = voicemails_ws.get_all_records()
         items = []
+
         for r in rows:
             row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
-            to_num = to_e164(r.get("To") or r.get("to") or "")
-            # show if:
-            # - admin
-            # - or row is explicitly tagged to this email
-            # - or the "To" number matches this user's assigned number
-            if is_admin or row_email == auth_email or (viewer_assigned and to_num == viewer_assigned):
+            if is_admin or row_email == auth_email:
                 items.append({
                     "created_at": r.get("Timestamp") or r.get("timestamp"),
                     "from_number": r.get("From") or r.get("from"),
                     "to_number": r.get("To") or r.get("to"),
                     "recording_url": r.get("RecordingUrl") or r.get("Recording URL") or r.get("recording_url"),
                     "duration": _coerce_int(
-                        r.get("Duration") or r.get("duration") or r.get("RecordingDuration") or 0
+                        r.get("Duration") or
+                        r.get("duration") or
+                        r.get("RecordingDuration") or 0
                     ),
                 })
 
         items = list(reversed(items))
         return jsonify(items), 200
+
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
@@ -829,10 +826,16 @@ def get_voicemails():
 
 
 
+
 @app.route("/vm-recording", methods=["POST"])
 def vm_recording():
+    """
+    Recording status callback from Twilio <Record>.
+    We store voicemail info into the Voicemails sheet.
+    """
     try:
         data = request.values
+
         from_raw = data.get("From") or ""
         called_raw = data.get("Called") or data.get("To") or ""
         rec_url = data.get("RecordingUrl") or ""
@@ -841,20 +844,29 @@ def vm_recording():
         from_e164 = to_e164(from_raw)
         called_e164 = to_e164(called_raw)
 
+        # Find which user owns the called number
         user = find_user_by_assigned_number(called_e164)
         user_email = (user or {}).get("email") or ""
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
+        # IMPORTANT: write ALL headers you have in Voicemails sheet:
+        # Timestamp | From | To | RecordingUrl | Duration | User Email | Status
         append_row_raw(
             voicemails_ws,
-            [timestamp, from_e164, called_e164, rec_url, duration, user_email]
+            [timestamp, from_e164, called_e164, rec_url, duration, user_email, "new"]
         )
-        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} url={rec_url}")
+
+        print(
+            f"[VM RECORDING] saved voicemail "
+            f"from={from_e164} to={called_e164} user={user_email} url={rec_url}"
+        )
+
     except Exception as e:
         print("vm-recording error:", e)
 
     return ("", 204)
+
 
 
 
