@@ -120,7 +120,7 @@
 
     <!-- Dialpad -->
     <div id="dialpadArea" style="display:flex;flex-direction:column;align-items:center;margin-top:6px">
-      <input id="dialInput" type="tel" inputmode="tel" pattern="^\+?\d[\d\s\-()]*$" placeholder="+1..." />
+      <input id="dialInput" type="tel" inputmode="tel" placeholder="+1..." />
       <div style="margin-top:12px">
         <div class="key-row">
           <button class="key" data-key="1">1</button>
@@ -1092,38 +1092,38 @@ function startHistoryPolling(){
 
 function stopHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval=null; }
 
-/* ---------- UI wiring ---------- */
+/* ---------- UI wiring: Dialpad + DTMF ---------- */
 document.addEventListener("click", (e) => {
   const k = e.target.closest("[data-key]");
   if (!k) return;
 
   const digit = k.getAttribute("data-key") || "";
 
-  // Always update the dial input so UI feels the same
-  $("dialInput").value += digit;
+  // Debug so we can see what's happening
+  console.log("Key pressed:", digit, "inCall=", inCall, "activeConn:", !!activeConn);
 
-  // Only send DTMF if the call is actually connected and we have a live connection
-  if (!callConnected || !activeConn) {
-    // Not yet bridged / no call → just behave like normal keypad
+  // If NOT in a call → behave like a normal dialpad (update input box)
+  if (!inCall || !activeConn) {
+    $("dialInput").value += digit;
     return;
   }
 
+  // We ARE in a call here → send DTMF instead of touching the input
   if (digit === "+") {
-    // '+' has no DTMF tone, ignore for tones
+    // '+' has no DTMF representation, so ignore it during calls
+    console.log("Ignoring '+' during active call (no DTMF tone)");
     return;
   }
 
-  console.log("Trying to send DTMF:", digit);
-
-  try {
-    if (typeof activeConn.sendDigits === "function") {
+  if (typeof activeConn.sendDigits === "function") {
+    try {
       activeConn.sendDigits(digit);
       console.log("DTMF sent:", digit);
-    } else {
-      console.warn("activeConn has no sendDigits() method", activeConn);
+    } catch (err) {
+      console.warn("Failed to send DTMF:", err);
     }
-  } catch (err) {
-    console.warn("Failed to send DTMF", err);
+  } else {
+    console.warn("activeConn has no sendDigits() method:", activeConn);
   }
 });
 
