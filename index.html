@@ -606,7 +606,6 @@ async function answerIncoming(){
     else if(typeof incomingConn.acceptConnection === 'function') incomingConn.acceptConnection();
     activeConn = incomingConn; incomingConn = null;
 
-    $("dialpadArea").style.display = "none";
     $("activeArea").style.display = "flex";
     $("hangupBtn").style.display = "inline-block";
     inCall = true;   // <-- NEW
