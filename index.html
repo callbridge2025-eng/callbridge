@@ -55,6 +55,21 @@
       0%{transform:scale(0.95);opacity:0.8}50%{transform:scale(1.08);opacity:1}100%{transform:scale(0.95);opacity:0.8}
     }
 
+    .tabBtn{
+  flex:1;
+  padding:8px 10px;
+  border-radius:999px;
+  border:1px solid #e5e7eb;
+  background:#f9fafb;
+  font-size:13px;
+  cursor:pointer;
+}
+.tabBtn.active{
+  background:var(--accent);
+  color:#fff;
+  border-color:var(--accent);
+}
+
     .ringDot{width:72px;height:72px;border-radius:50%;background:var(--green);margin:10px auto;animation:pulse 1.2s infinite}
     @media (max-width: 900px){
   html, body { height: 100%; overflow: hidden; }
@@ -160,25 +175,67 @@
     </div>
   </div>
 
-  <!-- RIGHT: Profile -->
+    <!-- RIGHT: SMS / Voicemails / Profile -->
   <div id="right" class="panel">
-    <h2>My Profile</h2>
-    <div class="profile-row"><div class="muted">Email</div><div id="pEmail">Loading...</div></div>
-    <div class="profile-row"><div class="muted">Assigned Number</div><div id="pNumber">Loading...</div></div>
-    <div class="profile-row"><div class="muted">Status</div><div id="pStatus">Loading...</div></div>
-    <div class="profile-row"><div class="muted">Valid Until</div><div id="pExpiry">Loading...</div></div>
-    <div style="margin-top:14px"><button id="logoutBtn" class="btn hang" style="width:100%">Logout</button></div>
-    <div style="margin-top:8px"><button id="changePwdBtn" class="btn gray" style="width:100%">Change Password</button></div>
+    <!-- Tab buttons -->
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="tabBtn active" data-tab="sms">SMS</button>
+      <button class="tabBtn" data-tab="voicemails">Voicemails</button>
+      <button class="tabBtn" data-tab="profile">My Profile</button>
+    </div>
 
-  <div style="margin-top:12px;font-size:13px;text-align:center;color:var(--muted)">
-  <div style="font-weight:600;color:#111827">Contact Support</div>
-  <div>📞 +1(803)346-6904</div>
-  <div>
-    📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
-      callbridge.2025@gmail.com
-    </a>
+    <!-- SMS TAB -->
+    <div id="smsTab">
+      <h2>SMS</h2>
+      <div style="margin-top:10px">
+        <div class="muted" style="font-size:13px;margin-bottom:4px">Send new SMS</div>
+        <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef" />
+        <textarea id="smsBody" rows="3" placeholder="Type your message..." style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="sendSmsBtn" class="btn call" style="flex:1" type="button">Send SMS</button>
+        </div>
+        <div id="smsError" class="muted" style="color:var(--danger);margin-top:6px;display:none"></div>
+        <div id="smsSuccess" class="muted" style="color:var(--green);margin-top:6px;display:none"></div>
+      </div>
+
+      <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+        <div class="muted">Recent messages</div>
+        <button id="refreshSmsBtn" class="btn gray" style="padding:4px 8px;font-size:12px" type="button">Refresh</button>
+      </div>
+      <div id="smsList" style="margin-top:8px">
+        <div class="muted">No messages yet</div>
+      </div>
+    </div>
+
+    <!-- VOICEMAILS TAB -->
+    <div id="voicemailsTab" style="display:none">
+      <h2>Voicemails</h2>
+      <div id="vmList" style="margin-top:12px">
+        <div class="muted">No voicemails yet</div>
+      </div>
+    </div>
+
+    <!-- PROFILE TAB -->
+    <div id="profileTab" style="display:none">
+      <h2>My Profile</h2>
+      <div class="profile-row"><div class="muted">Email</div><div id="pEmail">Loading...</div></div>
+      <div class="profile-row"><div class="muted">Assigned Number</div><div id="pNumber">Loading...</div></div>
+      <div class="profile-row"><div class="muted">Status</div><div id="pStatus">Loading...</div></div>
+      <div class="profile-row"><div class="muted">Valid Until</div><div id="pExpiry">Loading...</div></div>
+      <div style="margin-top:14px"><button id="logoutBtn" class="btn hang" style="width:100%">Logout</button></div>
+      <div style="margin-top:8px"><button id="changePwdBtn" class="btn gray" style="width:100%">Change Password</button></div>
+
+      <div style="margin-top:12px;font-size:13px;text-align:center;color:var(--muted)">
+        <div style="font-weight:600;color:#111827">Contact Support</div>
+        <div>📞 +1(803)346-6904</div>
+        <div>
+          📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
+            callbridge.2025@gmail.com
+          </a>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
 
   <!-- Incoming Call Modal -->
   <div id="incomingModal" style="display:none;align-items:center;justify-content:center" >
@@ -741,6 +798,208 @@ function renderHistoryItems(items){
   const container = $("historyList");
   container.innerHTML = "";
 
+/* ---------- SMS ---------- */
+async function sendSms(){
+  $("smsError").style.display = "none";
+  $("smsSuccess").style.display = "none";
+
+  const to = $("smsTo").value.trim();
+  const body = $("smsBody").value.trim();
+
+  if (!to || !body) {
+    $("smsError").innerText = "Number and message are required.";
+    $("smsError").style.display = "block";
+    return;
+  }
+
+  try {
+    const emailQS = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/send-sms${emailQS}`, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify({ to, body })
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      $("smsError").innerText = json.error || `Send failed (${res.status})`;
+      $("smsError").style.display = "block";
+      return;
+    }
+
+    $("smsSuccess").innerText = "Message sent.";
+    $("smsSuccess").style.display = "block";
+    $("smsBody").value = "";
+    await refreshSms();
+  } catch (e) {
+    console.error("sendSms error", e);
+    $("smsError").innerText = "Network error";
+    $("smsError").style.display = "block";
+  }
+}
+
+async function refreshSms(){
+  try {
+    if (!currentUser) return;
+    const email = currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/sms-logs${email}`, {
+      method: "GET",
+      headers: Object.assign({}, authHeaders())
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderSmsItems(data);
+  } catch (e) {
+    console.error("refreshSms error", e);
+  }
+}
+
+function renderSmsItems(items){
+  const container = $("smsList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(items) || items.length === 0) {
+    container.innerHTML = '<div class="muted">No messages yet</div>';
+    return;
+  }
+
+  items.forEach(m => {
+    const div = document.createElement("div");
+    div.className = "history-item";
+
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const badge = document.createElement("div");
+    badge.className = "badge";
+    badge.innerText = (m.direction || "SMS").toUpperCase();
+
+    const main = document.createElement("div");
+    main.style.fontWeight = 700;
+
+    const dir = (m.direction || "").toLowerCase();
+    let displayNum = "";
+    if (dir === "incoming") {
+      displayNum = m.from_number || m.from || "";
+    } else {
+      displayNum = m.to_number || m.to || m.from_number || "";
+    }
+    main.innerText = showE164(displayNum);
+
+    const sub = document.createElement("div");
+    sub.className = "muted";
+    sub.style.fontSize = "12px";
+    sub.innerText = (m.body || "").slice(0, 80);
+
+    left.appendChild(badge);
+    left.appendChild(main);
+    left.appendChild(sub);
+
+    const right = document.createElement("div");
+    right.style.textAlign = "right";
+    right.innerHTML = `
+      <div class="muted">${new Date(m.created_at || Date.now()).toLocaleString()}</div>
+    `;
+
+    div.appendChild(left);
+    div.appendChild(right);
+    container.appendChild(div);
+  });
+}
+
+
+  /* ---------- Voicemails ---------- */
+async function refreshVoicemails(){
+  try {
+    if (!currentUser) return;
+    const email = currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/voicemails${email}`, {
+      method: "GET",
+      headers: Object.assign({}, authHeaders())
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderVoicemails(data);
+  } catch (e) {
+    console.error("refreshVoicemails error", e);
+  }
+}
+
+function renderVoicemails(items){
+  const container = $("vmList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(items) || items.length === 0) {
+    container.innerHTML = '<div class="muted">No voicemails yet</div>';
+    return;
+  }
+
+  items.forEach(vm => {
+    const div = document.createElement("div");
+    div.className = "history-item";
+
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const badge = document.createElement("div");
+    badge.className = "badge";
+    badge.innerText = "VOICEMAIL";
+
+    const main = document.createElement("div");
+    main.style.fontWeight = 700;
+    main.innerText = showE164(vm.from_number || "");
+
+    const sub = document.createElement("div");
+    sub.className = "muted";
+    sub.style.fontSize = "12px";
+    sub.innerText = new Date(vm.created_at || Date.now()).toLocaleString();
+
+    left.appendChild(badge);
+    left.appendChild(main);
+    left.appendChild(sub);
+
+    const right = document.createElement("div");
+    right.style.textAlign = "right";
+
+    const playBtn = document.createElement("button");
+    playBtn.className = "btn gray";
+    playBtn.style.padding = "6px 10px";
+    playBtn.type = "button";
+    playBtn.innerText = "▶ Play";
+    playBtn.addEventListener("click", () => {
+      const url = (vm.recording_url || "").trim();
+      if (!url) {
+        alert("No recording URL available.");
+        return;
+      }
+      // Twilio RecordingUrl can usually be suffixed with .mp3
+      const audio = new Audio(url + ".mp3");
+      audio.play().catch(err => {
+        console.warn("Audio play failed", err);
+        alert("Unable to play voicemail on this device/browser.");
+      });
+    });
+
+    const dur = document.createElement("div");
+    dur.style.marginTop = "6px";
+    dur.style.fontWeight = "700";
+    dur.innerText = (vm.duration || 0) + " s";
+
+    right.appendChild(playBtn);
+    right.appendChild(dur);
+
+    div.appendChild(left);
+    div.appendChild(right);
+    container.appendChild(div);
+  });
+}
+
+
   items.forEach(it => {
     const div = document.createElement("div");
     div.className = "history-item";
@@ -795,7 +1054,15 @@ function renderHistoryItems(items){
 }
 
 /* ---------- polling ---------- */
-function startHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval = setInterval(refreshHistory,8000); }
+function startHistoryPolling(){
+  if(historyPollInterval) clearInterval(historyPollInterval);
+  historyPollInterval = setInterval(() => {
+    refreshHistory();
+    refreshSms();
+    refreshVoicemails();
+  }, 8000);
+}
+
 function stopHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval=null; }
 
 /* ---------- UI wiring ---------- */
@@ -808,6 +1075,26 @@ $("answerBtn").addEventListener("click", answerIncoming);
 $("declineBtn").addEventListener("click", declineIncoming);
 $("logoutBtn").addEventListener("click", async ()=>{ await performLogout(); });
 $("speakerBtn").addEventListener("click", toggleSpeaker);
+// SMS
+$("sendSmsBtn").addEventListener("click", sendSms);
+$("refreshSmsBtn").addEventListener("click", refreshSms);
+
+// Tabs (SMS / Voicemails / Profile)
+const tabButtons = document.querySelectorAll(".tabBtn");
+tabButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    const tab = btn.getAttribute("data-tab");
+
+    ["sms", "voicemails", "profile"].forEach(t => {
+      const el = $(t + "Tab");
+      if (el) el.style.display = (t === tab ? "block" : "none");
+    });
+
+    tabButtons.forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  });
+});
+
 
 /* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
@@ -885,9 +1172,12 @@ async function postLoginInit(){
     await loadProfile();
     await initTwilioDevice(); // will call safeInitTwilioDevice internally
     await refreshHistory();
+    await refreshSms();
+    await refreshVoicemails();
     startHistoryPolling();
   }catch(e){ console.error("postLoginInit error", e); }
 }
+
 
 /* ---------- app init (auto-login) ---------- */
 async function init(){
