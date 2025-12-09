@@ -1099,18 +1099,38 @@ document.addEventListener("click", (e) => {
 
   const digit = k.getAttribute("data-key") || "";
 
-  // If call is connected -> send DTMF instead of typing
-  if (callConnected && activeConn && typeof activeConn.sendDigits === "function") {
-    if (digit === "+") {
-      // '+' doesn't have a DTMF tone
-      return;
-    }
-    try {
+  // If NOT in a call → just type into the dial input (normal behavior)
+  if (!inCall) {
+    $("dialInput").value += digit;
+    return;
+  }
+
+  // If we ARE in a call → send DTMF, do NOT change the input
+  if (!activeConn) {
+    console.warn("Digit pressed while inCall=true but activeConn is null");
+    return;
+  }
+
+  if (digit === "+") {
+    // '+' has no DTMF tone, ignore
+    return;
+  }
+
+  console.log("Trying to send DTMF", digit, "on", activeConn);
+
+  // Twilio Voice SDK v2: Call#sendDigits
+  try {
+    if (typeof activeConn.sendDigits === "function") {
       activeConn.sendDigits(digit);
-      console.log("✅ Sent DTMF:", digit);
-    } catch (err) {
-      console.warn("Failed to send DTMF", err);
+      console.log("DTMF sent:", digit);
+    } else {
+      console.warn("activeConn has no sendDigits() method", activeConn);
     }
+  } catch (err) {
+    console.warn("Failed to send DTMF", err);
+  }
+});
+
     return; // don't touch the dial input while in-call
   }
 
