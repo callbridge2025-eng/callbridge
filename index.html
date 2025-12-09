@@ -1099,26 +1099,22 @@ document.addEventListener("click", (e) => {
 
   const digit = k.getAttribute("data-key") || "";
 
-  // If NOT in a call → just type into the dial input (normal behavior)
-  if (!inCall) {
-    $("dialInput").value += digit;
-    return;
-  }
+  // Always update the dial input so UI feels the same
+  $("dialInput").value += digit;
 
-  // If we ARE in a call → send DTMF, do NOT change the input
-  if (!activeConn) {
-    console.warn("Digit pressed while inCall=true but activeConn is null");
+  // Only send DTMF if the call is actually connected and we have a live connection
+  if (!callConnected || !activeConn) {
+    // Not yet bridged / no call → just behave like normal keypad
     return;
   }
 
   if (digit === "+") {
-    // '+' has no DTMF tone, ignore
+    // '+' has no DTMF tone, ignore for tones
     return;
   }
 
-  console.log("Trying to send DTMF", digit, "on", activeConn);
+  console.log("Trying to send DTMF:", digit);
 
-  // Twilio Voice SDK v2: Call#sendDigits
   try {
     if (typeof activeConn.sendDigits === "function") {
       activeConn.sendDigits(digit);
@@ -1130,14 +1126,6 @@ document.addEventListener("click", (e) => {
     console.warn("Failed to send DTMF", err);
   }
 });
-
-return; // don't touch the dial input while in-call
-  }
-  
-  // No active connected call → behave like normal dialpad
-  $("dialInput").value += digit;
-});
-
 
 $("startCallBtn").addEventListener("click", startCall);
 $("hangupBtn").addEventListener("click", hangUp);
@@ -1167,10 +1155,12 @@ tabButtons.forEach(btn => {
   });
 });
 
-
 /* Login modal listeners */
 $("loginBtn").addEventListener("click", performLogin);
-$("loginPassword")?.addEventListener && $("loginPassword").addEventListener("keydown",(e)=>{ if(e.key==='Enter') performLogin(); });
+$("loginPassword")?.addEventListener &&
+  $("loginPassword").addEventListener("keydown", (e) => {
+    if (e.key === 'Enter') performLogin();
+  });
 
 /* ---------- change password modal ---------- */
 function showChangePwdModal(){
