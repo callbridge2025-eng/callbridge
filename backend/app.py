@@ -791,48 +791,39 @@ def get_voicemails():
                      or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
 
         if not auth_email:
+            # Not logged in → no data
             return jsonify([])
-
-        auth_email = auth_email.strip().lower()
 
         viewer = find_user_by_email(auth_email)
         is_admin = False
-        if viewer and str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
-            is_admin = True
+        viewer_number = ""
+
+        if viewer:
+            # Is admin?
+            if str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
+                is_admin = True
+            # Normalized assigned number for matching "To"
+            viewer_number = to_e164(viewer.get("assigned_number") or "")
 
         rows = voicemails_ws.get_all_records()
         items = []
+
         for r in rows:
             row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
-            row_to    = (r.get("To") or r.get("to") or "").strip()
+            row_to = r.get("To") or r.get("to") or ""
+            row_to_e164 = to_e164(row_to)
 
-            show = False
-
+            # Who can see this voicemail?
+            allowed = False
             if is_admin:
-                # admins see all voicemails
-                show = True
-            else:
-                # 1) exact match on User Email (preferred)
-                if row_email and row_email == auth_email:
-                    show = True
-                else:
-                    # 2) try to map by "To" number in the row
-                    mapped_email = None
-                    if row_to:
-                        mapped_user = find_user_by_assigned_number(to_e164(row_to))
-                        if mapped_user:
-                            mapped_email = str(mapped_user.get("email") or "").strip().lower()
+                allowed = True
+            elif row_email and row_email == auth_email:
+                allowed = True
+            elif viewer_number and row_to_e164 and row_to_e164 == viewer_number:
+                # Even if User Email is blank, show if it was sent to my assigned number
+                allowed = True
 
-                    if mapped_email == auth_email:
-                        show = True
-                    else:
-                        # 3) LAST FALLBACK:
-                        #    if there is NO User Email and NO To number,
-                        #    treat it as "global" and show it to everyone
-                        if not row_email and not row_to:
-                            show = True
-
-            if not show:
+            if not allowed:
                 continue
 
             items.append({
@@ -841,8 +832,12 @@ def get_voicemails():
                 "to_number": r.get("To") or r.get("to"),
                 "recording_url": r.get("RecordingUrl") or r.get("Recording URL") or r.get("recording_url"),
                 "duration": _coerce_int(
-                    r.get("Duration") or r.get("duration") or r.get("RecordingDuration") or 0
+                    r.get("Duration")
+                    or r.get("duration")
+                    or r.get("RecordingDuration")
+                    or 0
                 ),
+                "status": r.get("Status") or r.get("status") or ""
             })
 
         items = list(reversed(items))
@@ -853,44 +848,67 @@ def get_voicemails():
 
 
 
-
-
 @app.route("/vm-recording", methods=["POST"])
 def vm_recording():
     """
     Recording status callback from Twilio <Record>.
     We store voicemail info into the Voicemails sheet.
-    Tries multiple possible field names for From/To to avoid blanks.
+
+    We now:
+    - Try to read From / To from callback params.
+    - If missing, fetch the parent Call from Twilio using CallSid.
+    - Resolve user by the called number (your Twilio / assigned number).
+    - Store Status as well (e.g. completed).
     """
     try:
-        data = request.values.to_dict()
-        print("[VM RECORDING]", data)
+        data = request.values
+        print("[VM RECORDING] raw callback:", dict(data))
 
-        # Try several possible keys that Twilio might send
-        from_raw = _get_first_key(data, ["From", "Caller", "CallFrom"]) or ""
-        called_raw = _get_first_key(data, ["To", "Called", "CallTo", "Dialed"]) or ""
+        # 1) Try to get numbers from the callback itself
+        from_raw = data.get("From") or data.get("Caller") or ""
+        called_raw = data.get("Called") or data.get("To") or ""
+
+        # 2) If missing, try to fetch the parent call from Twilio
+        if (not from_raw or not called_raw) and data.get("CallSid"):
+            try:
+                client = get_twilio_client()
+                call_sid = data.get("CallSid")
+                call = client.calls(call_sid).fetch()
+                if not from_raw:
+                    from_raw = call.from_ or ""
+                if not called_raw:
+                    called_raw = call.to or ""
+                print(f"[VM RECORDING] Fetched call {call_sid}: from={from_raw}, to={called_raw}")
+            except Exception as e:
+                print("vm-recording: failed to fetch call details:", e)
 
         rec_url = data.get("RecordingUrl") or ""
         duration = _coerce_int(data.get("RecordingDuration"), 0)
+        status = data.get("RecordingStatus") or "new"
 
+        # Normalize numbers
         from_e164 = to_e164(from_raw)
         called_e164 = to_e164(called_raw)
 
-        # Map called number to user (so user_email column is filled)
+        # Map called number -> user
         user = find_user_by_assigned_number(called_e164)
         user_email = (user or {}).get("email") or ""
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
+        # IMPORTANT: match your sheet header:
+        # Timestamp | From | To | RecordingUrl | Duration | User Email | Status
         append_row_raw(
             voicemails_ws,
-            [timestamp, from_e164, called_e164, rec_url, duration, user_email]
+            [timestamp, from_e164, called_e164, rec_url, duration, user_email, status]
         )
-        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} url={rec_url} user={user_email}")
+
+        print(f"[VM RECORDING] saved voicemail from={from_e164} to={called_e164} user={user_email} url={rec_url} status={status}")
     except Exception as e:
         print("vm-recording error:", e)
 
     return ("", 204)
+
 
 
 @app.route("/vm-audio/<recording_sid>", methods=["GET"])
