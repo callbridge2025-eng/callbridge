@@ -1073,7 +1073,30 @@ function startHistoryPolling(){
 function stopHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval=null; }
 
 /* ---------- UI wiring ---------- */
-document.addEventListener("click",(e)=>{ const k = e.target.closest("[data-key]"); if(k) $("dialInput").value += k.getAttribute("data-key"); });
+document.addEventListener("click", (e) => {
+  const k = e.target.closest("[data-key]");
+  if (!k) return;
+
+  const digit = k.getAttribute("data-key") || "";
+  // keep old behavior: update dial input
+  $("dialInput").value += digit;
+
+  // NEW: send DTMF if we are in an active call
+  // Twilio accepts 0-9, *, #, w — there is no '+' DTMF tone
+  if (inCall && activeConn && typeof activeConn.sendDigits === "function") {
+    if (digit === "+") {
+      // no DTMF for +, so just ignore for tones
+      return;
+    }
+    try {
+      activeConn.sendDigits(digit);
+      console.log("Sent DTMF:", digit);
+    } catch (err) {
+      console.warn("Failed to send DTMF", err);
+    }
+  }
+});
+
 $("startCallBtn").addEventListener("click", startCall);
 $("hangupBtn").addEventListener("click", hangUp);
 $("muteBtn").addEventListener("click", toggleMute);
