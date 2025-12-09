@@ -779,24 +779,88 @@ function startTimer(){ callStartTs = Date.now(); stopTimer(); timerInterval = se
 function stopTimer(){ if(timerInterval){ clearInterval(timerInterval); timerInterval=null; setText("callTimer","00:00"); } }
 
 /* ---------- history ---------- */
+/* ---------- history ---------- */
 async function refreshHistory(){
   try{
     if(!currentUser) return;
     const email = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
-const res = await fetch(`${API_BASE}/calls${email}`, {
-  method: "GET",
-  headers: Object.assign({}, authHeaders())
-});
+    const res = await fetch(`${API_BASE}/calls${email}`, {
+      method: "GET",
+      headers: Object.assign({}, authHeaders())
+    });
 
-    if(!res.ok){ $("historyList").innerHTML = '<div class="muted">No calls yet</div>'; return; }
+    if(!res.ok){
+      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
+      return;
+    }
     const data = await res.json();
-    if(!Array.isArray(data) || data.length===0){ $("historyList").innerHTML = '<div class="muted">No calls yet</div>'; return; }
+    if(!Array.isArray(data) || data.length===0){
+      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
+      return;
+    }
     renderHistoryItems(data);
-  }catch(e){ console.error("refreshHistory error", e); $("historyList").innerHTML = '<div class="muted">Error loading history</div>'; }
+  }catch(e){
+    console.error("refreshHistory error", e);
+    $("historyList").innerHTML = '<div class="muted">Error loading history</div>';
+  }
 }
+
 function renderHistoryItems(items){
   const container = $("historyList");
   container.innerHTML = "";
+
+  items.forEach(it => {
+    const div = document.createElement("div");
+    div.className = "history-item";
+
+    const type = String(it.call_type || it.type || "").toLowerCase();
+
+    // choose which number to display
+    let displayNum = "";
+    if (type === "incoming") {
+      displayNum = it.from_number || it.other_number || it.phone_number || it.to_number || "";
+    } else if (type === "outgoing") {
+      displayNum = it.to_number || it.other_number || it.phone_number || it.from_number || "";
+    } else {
+      // fallback if type missing
+      displayNum = it.to_number || it.from_number || it.other_number || it.phone_number || "";
+    }
+
+    // left side
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const badge = document.createElement("div");
+    badge.className = "badge";
+    badge.innerText = (it.call_type || it.type || "UNKNOWN").toUpperCase();
+
+    const main = document.createElement("div");
+    main.style.fontWeight = 700;
+    main.innerText = showE164(displayNum);
+
+    const sub = document.createElement("div");
+    sub.className = "muted";
+    sub.style.fontSize = "12px";
+    sub.innerText = it.status || "";
+
+    left.appendChild(badge);
+    left.appendChild(main);
+    left.appendChild(sub);
+
+    // right side
+    const right = document.createElement("div");
+    right.style.textAlign = "right";
+    right.innerHTML = `
+      <div class="muted">${new Date(it.created_at || it.started_at || Date.now()).toLocaleString()}</div>
+      <div style="font-weight:700;margin-top:6px">${(it.duration || 0)} s</div>
+    `;
+
+    div.appendChild(left);
+    div.appendChild(right);
+    container.appendChild(div);
+  });
+}
 
 /* ---------- SMS ---------- */
 async function sendSms(){
@@ -910,8 +974,7 @@ function renderSmsItems(items){
   });
 }
 
-
-  /* ---------- Voicemails ---------- */
+/* ---------- Voicemails ---------- */
 async function refreshVoicemails(){
   try {
     if (!currentUser) return;
@@ -977,7 +1040,6 @@ function renderVoicemails(items){
         alert("No recording URL available.");
         return;
       }
-      // Twilio RecordingUrl can usually be suffixed with .mp3
       const audio = new Audio(url + ".mp3");
       audio.play().catch(err => {
         console.warn("Audio play failed", err);
@@ -999,59 +1061,6 @@ function renderVoicemails(items){
   });
 }
 
-
-  items.forEach(it => {
-    const div = document.createElement("div");
-    div.className = "history-item";
-
-    const type = String(it.call_type || it.type || "").toLowerCase();
-
-    // choose which number to display
-    let displayNum = "";
-    if (type === "incoming") {
-      displayNum = it.from_number || it.other_number || it.phone_number || it.to_number || "";
-    } else if (type === "outgoing") {
-      displayNum = it.to_number || it.other_number || it.phone_number || it.from_number || "";
-    } else {
-      // fallback if type missing
-      displayNum = it.to_number || it.from_number || it.other_number || it.phone_number || "";
-    }
-
-    // left side
-    const left = document.createElement("div");
-    left.style.display = "flex";
-    left.style.flexDirection = "column";
-
-    const badge = document.createElement("div");
-    badge.className = "badge";
-    badge.innerText = (it.call_type || it.type || "UNKNOWN").toUpperCase();
-
-    const main = document.createElement("div");
-    main.style.fontWeight = 700;
-    main.innerText = showE164(displayNum);
-
-    const sub = document.createElement("div");
-    sub.className = "muted";
-    sub.style.fontSize = "12px";
-    sub.innerText = it.status || "";
-
-    left.appendChild(badge);
-    left.appendChild(main);
-    left.appendChild(sub);
-
-    // right side
-    const right = document.createElement("div");
-    right.style.textAlign = "right";
-    right.innerHTML = `
-      <div class="muted">${new Date(it.created_at || it.started_at || Date.now()).toLocaleString()}</div>
-      <div style="font-weight:700;margin-top:6px">${(it.duration || 0)} s</div>
-    `;
-
-    div.appendChild(left);
-    div.appendChild(right);
-    container.appendChild(div);
-  });
-}
 
 /* ---------- polling ---------- */
 function startHistoryPolling(){
