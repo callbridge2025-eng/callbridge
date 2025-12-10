@@ -114,6 +114,13 @@
   overflow-y:auto;
 }
 
+.smsLayout.list-only .smsThreads {
+  width: 100%;
+  max-width: none;
+  border-right: none;
+  padding-right: 0;
+}
+
 .smsThreadPane{
   flex:1;
   display:flex;
@@ -294,7 +301,7 @@
         Tap a conversation on the left or start a new chat below.
       </div>
 
-      <div class="smsLayout">
+      <div id="smsLayout" class="smsLayout list-only">
 
   <!-- LEFT: conversation list -->
   <div id="smsThreadsPane" class="smsThreads">
