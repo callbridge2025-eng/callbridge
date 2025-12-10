@@ -1109,13 +1109,16 @@ def upload_sms_file():
         unique_name = f"{int(time.time())}_{secrets.token_hex(4)}{ext}"
 
         save_path = os.path.join(UPLOAD_FOLDER, unique_name)
+        print("🟢 Saving upload to:", save_path)
         f.save(save_path)
+        print("🟢 File saved, exists? ->", os.path.exists(save_path))
 
-        # Public URL so Twilio can fetch it
+        # Public URL so Twilio & browser can fetch it
         public_url = _https_url(
             f"{request.url_root.rstrip('/')}/sms-file/{unique_name}",
             request
         )
+        print("🟢 Public URL:", public_url)
 
         return json_cors({"url": public_url}, 200)
 
@@ -1124,10 +1127,18 @@ def upload_sms_file():
         return json_cors({"error": "Upload failed"}, 500)
 
 
-
 @app.route("/sms-file/<path:filename>", methods=["GET"])
 def sms_file(filename):
     try:
+        full_path = os.path.join(UPLOAD_FOLDER, filename)
+        print("🔎 sms_file requested:", filename)
+        print("   → full path:", full_path)
+        print("   → exists?", os.path.exists(full_path))
+
+        if not os.path.isfile(full_path):
+            print("   ❌ File missing on disk")
+            return "Not found", 404
+
         return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=False)
     except Exception as e:
         print("sms_file error:", e, traceback.format_exc())
