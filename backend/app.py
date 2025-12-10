@@ -718,18 +718,21 @@ def send_sms():
             return json_cors({"error": "Twilio credentials not configured"}, 500)
 
         data = request.get_json(force=True) or {}
-        to_raw   = data.get("to")
-        body     = (data.get("body") or "").strip()
-        media_url = data.get("mediaUrl") or data.get("media_url")  # ✅ from frontend
+        to_raw = data.get("to")
+        body = (data.get("body") or "").strip()
+        attachment_url = (data.get("attachmentUrl") or "").strip()  # <-- from frontend
+
+        # ✅ allow: text only, file only, or both
+        if not to_raw or (not body and not attachment_url):
+            return json_cors(
+                {"error": "Missing 'to' or both message and attachment."},
+                400
+            )
 
         # who is sending?
         auth_email = auth_from_token(request.headers.get("Authorization", "")) \
                      or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
         user_email = (data.get("user_email") or auth_email or "").strip().lower()
-
-        # ✅ now allow: text OR media
-        if not to_raw or (not body and not media_url):
-            return json_cors({"error": "Missing 'to' and either 'body' or 'mediaUrl'."}, 400)
 
         # ---- Resolve user and from-number ----
         user = find_user_by_email(user_email) if user_email else None
@@ -753,16 +756,11 @@ def send_sms():
             "from_": from_number,
             "to": to_number,
         }
-
-        # body may be empty string; Twilio allows MMS with only media
         if body:
             msg_kwargs["body"] = body
-        else:
-            msg_kwargs["body"] = ""  # keep it present but blank
-
-        if media_url:
-            # Twilio expects list of URLs
-            msg_kwargs["media_url"] = [media_url]
+        if attachment_url:
+            # Twilio expects a list for media_url
+            msg_kwargs["media_url"] = [attachment_url]
 
         msg = client.messages.create(**msg_kwargs)
         print(f"✅ SMS/MMS sent from {from_number} to {to_number}, SID: {msg.sid}")
@@ -770,17 +768,16 @@ def send_sms():
         # ---- Log to Google Sheet (SMSLogs tab) ----
         try:
             ws_sms = sh.worksheet("SMSLogs")
-            # you can add media_url as extra column if your sheet has it
             ws_sms.append_row([
                 datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 "outgoing",          # Direction
-                from_number,         # From (assigned number or fallback)
+                from_number,         # From
                 to_number,           # To
-                body,                # Body (can be blank)
-                user_email,          # User Email (owner in app)
+                body,                # Body (may be empty for attachment-only)
+                user_email,          # User Email
                 "sent",              # Status
                 msg.sid,             # SID
-                media_url or ""      # MediaUrl (optional column)
+                attachment_url       # (optional) attachment URL – add a header in sheet if you want
             ])
         except Exception as e:
             print("⚠️ Failed to write to SMSLogs:", e, traceback.format_exc())
