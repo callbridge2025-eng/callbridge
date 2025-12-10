@@ -712,30 +712,18 @@ def send_sms():
             return json_cors({"error": "Twilio credentials not configured"}, 500)
 
         data = request.get_json(force=True) or {}
-        to_raw = data.get("to")
-        body = (data.get("body") or "").strip()
-
-        # OPTIONAL: media URL(s) coming from frontend
-        # supports: mediaUrl, media_url, mediaUrls, media_urls
-        media_urls = []
-
-        single_media = data.get("mediaUrl") or data.get("media_url")
-        if single_media:
-            media_urls.append(single_media)
-
-        multiple_media = data.get("mediaUrls") or data.get("media_urls") or []
-        for u in multiple_media:
-            if u and u not in media_urls:
-                media_urls.append(u)
+        to_raw   = data.get("to")
+        body     = (data.get("body") or "").strip()
+        media_url = data.get("mediaUrl") or data.get("media_url")  # ✅ from frontend
 
         # who is sending?
         auth_email = auth_from_token(request.headers.get("Authorization", "")) \
                      or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
         user_email = (data.get("user_email") or auth_email or "").strip().lower()
 
-        # require: to + (body OR media)
-        if not to_raw or (not body and not media_urls):
-            return json_cors({"error": "Missing 'to' or message content (body/media)."}, 400)
+        # ✅ now allow: text OR media
+        if not to_raw or (not body and not media_url):
+            return json_cors({"error": "Missing 'to' and either 'body' or 'mediaUrl'."}, 400)
 
         # ---- Resolve user and from-number ----
         user = find_user_by_email(user_email) if user_email else None
@@ -755,53 +743,47 @@ def send_sms():
         # ---- Send SMS/MMS via Twilio ----
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-        create_kwargs = {
+        msg_kwargs = {
             "from_": from_number,
             "to": to_number,
         }
-        if body:
-            create_kwargs["body"] = body
-        if media_urls:
-            # Twilio expects a list of URLs for MMS
-            create_kwargs["media_url"] = media_urls
 
-        msg = client.messages.create(**create_kwargs)
+        # body may be empty string; Twilio allows MMS with only media
+        if body:
+            msg_kwargs["body"] = body
+        else:
+            msg_kwargs["body"] = ""  # keep it present but blank
+
+        if media_url:
+            # Twilio expects list of URLs
+            msg_kwargs["media_url"] = [media_url]
+
+        msg = client.messages.create(**msg_kwargs)
         print(f"✅ SMS/MMS sent from {from_number} to {to_number}, SID: {msg.sid}")
 
         # ---- Log to Google Sheet (SMSLogs tab) ----
         try:
             ws_sms = sh.worksheet("SMSLogs")
-
-            # store media URLs inside body column so we don't break existing sheet structure
-            log_body = body
-            if media_urls:
-                media_note = "Media: " + ", ".join(media_urls)
-                log_body = (body + "\n\n" + media_note) if body else media_note
-
+            # you can add media_url as extra column if your sheet has it
             ws_sms.append_row([
                 datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 "outgoing",          # Direction
                 from_number,         # From (assigned number or fallback)
                 to_number,           # To
-                log_body,            # Body (+ media info if any)
+                body,                # Body (can be blank)
                 user_email,          # User Email (owner in app)
                 "sent",              # Status
-                msg.sid              # SID
+                msg.sid,             # SID
+                media_url or ""      # MediaUrl (optional column)
             ])
         except Exception as e:
             print("⚠️ Failed to write to SMSLogs:", e, traceback.format_exc())
 
-        # Return info to frontend so it knows what was sent
-        return json_cors({
-            "status": "ok",
-            "sid": msg.sid,
-            "media_urls": media_urls,
-        }, 200)
+        return json_cors({"status": "ok", "sid": msg.sid}, 200)
 
     except Exception as e:
         print("❌ Error in /send-sms:", e, traceback.format_exc())
         return json_cors({"error": "Failed to send SMS"}, 500)
-
 
 
 
