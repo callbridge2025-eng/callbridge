@@ -354,49 +354,27 @@
 
     <div id="smsThreadMessages" class="threadMessages"></div>
 
-  <div class="threadComposer">
-  <div class="muted" style="font-size:12px">To</div>
-  <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
+    <div class="threadComposer">
+    <!-- Attach file row -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <input
+        type="file"
+        id="smsFile"
+        style="font-size:12px"
+      />
+      <span id="smsFileName" class="muted" style="font-size:12px"></span>
+    </div>
 
-  <textarea
-    id="smsBody"
-    rows="2"
-    placeholder="Type your message..."
-  ></textarea>
+    <div class="muted" style="font-size:12px">To</div>
+    <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
+    <textarea id="smsBody" rows="2" placeholder="Type your message..."></textarea>
 
-  <!-- Attach row -->
-  <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
-    <input
-      id="smsFileInput"
-      type="file"
-      multiple
-      style="display:none"
-      accept="image/*,application/pdf"
-    />
-    <button
-      id="smsAttachBtn"
-      class="btn gray"
-      type="button"
-      style="padding:6px 10px;font-size:12px"
-    >
-      📎 Attach
-    </button>
-    <span
-      id="smsAttachedLabel"
-      class="muted"
-      style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
-    >
-      No file selected
-    </span>
+    <button id="sendSmsBtn" class="btn call" type="button">Send</button>
+
+    <div id="smsError" class="muted" style="color:var(--danger);display:none"></div>
+    <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
   </div>
 
-  <button id="sendSmsBtn" class="btn call" type="button" style="margin-top:6px">
-    Send
-  </button>
-
-  <div id="smsError" class="muted" style="color:var(--danger);display:none"></div>
-  <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
-</div>
 
 
 </div> <!-- end smsChatPane -->
@@ -1264,16 +1242,13 @@ async function sendSms(){
   $("smsError").style.display = "none";
   $("smsSuccess").style.display = "none";
 
-  // If a thread is selected, default to that number
   const typedTo = $("smsTo").value.trim();
   const to = typedTo || currentThreadNumber;
   const body = $("smsBody").value.trim();
 
-  // ✅ NEW: allow either text OR attachment
-  const hasAttachment = !!smsAttachmentUrl;
-
-  if (!to || (!body && !hasAttachment)) {
-    $("smsError").innerText = "Number and message (or file) are required.";
+  // ✅ allow: text only, file only, or both
+  if (!to || (!body && !smsAttachmentUrl)) {
+    $("smsError").innerText = "Number and message or attachment are required.";
     $("smsError").style.display = "block";
     return;
   }
@@ -1285,14 +1260,14 @@ async function sendSms(){
 
     const payload = {
       to,
-      body,                  // can be empty string
-      mediaUrl: smsAttachmentUrl || null  // ✅ send attachment URL if present
+      body,
+      attachmentUrl: smsAttachmentUrl || null,   // <-- send URL if present
     };
 
     const res = await fetch(`${API_BASE}/send-sms${emailQS}`, {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -1307,12 +1282,11 @@ async function sendSms(){
     $("smsSuccess").style.display = "block";
     $("smsBody").value = "";
 
-    // if you want to clear the file after sending:
-    smsAttachmentUrl = "";
-    const fileInput = $("smsFile");
-    if (fileInput) fileInput.value = "";
+    // ✅ clear attachment after send
+    smsAttachmentUrl = "";               // <-- resets for next message
+    $("smsFile").value = "";
+    $("smsFileName").innerText = "";
 
-    // Make sure this conversation becomes/ stays the active thread
     currentThreadNumber = to;
     $("smsTo").value = to;
 
@@ -1500,18 +1474,45 @@ $("smsAttachBtn").addEventListener("click", () => {
   $("smsFileInput").click();
 });
 
-$("smsFileInput").addEventListener("change", () => {
-  const files = $("smsFileInput").files;
-  if (!files || !files.length) {
-    $("smsAttachedLabel").innerText = "No file selected";
+// Handle file selection + upload
+$("smsFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+
+  // No file selected → clear
+  if (!file) {
+    smsAttachmentUrl = "";           // <-- clear attachment when no file
+    $("smsFileName").innerText = "";
     return;
   }
-  if (files.length === 1) {
-    $("smsAttachedLabel").innerText = files[0].name;
-  } else {
-    $("smsAttachedLabel").innerText = `${files.length} files selected`;
+
+  // Show file name
+  $("smsFileName").innerText = file.name;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch(`${API_BASE}/upload-sms-file`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok || !json.url) {
+      throw new Error(json.error || "Upload failed");
+    }
+
+    // ✅ this is where you set the URL from backend
+    smsAttachmentUrl = json.url;      // <-- smsAttachmentUrl = uploadedUrl;
+    console.log("Uploaded file URL:", smsAttachmentUrl);
+  } catch (err) {
+    console.error("SMS file upload error:", err);
+    smsAttachmentUrl = "";           // <-- clear if upload fails
+    $("smsFileName").innerText = "Upload failed";
   }
 });
+
 
 
 // Tabs (SMS / Voicemails / Profile)
