@@ -1416,22 +1416,6 @@ $("speakerBtn").addEventListener("click", toggleSpeaker);
 // SMS
 $("sendSmsBtn").addEventListener("click", sendSms);
 $("refreshSmsBtn").addEventListener("click", refreshSms);
-  // Start a brand new conversation
-$("smsNewChatBtn").addEventListener("click", () => {
-  currentSmsPeerKey = null;
-  $("smsThreadTitle").innerText = "New message";
-  $("smsMessages").innerHTML =
-    '<div class="muted">Start a new conversation by typing a number and message below.</div>';
-  $("smsTo").value = "";
-  $("smsBody").value = "";
-
-  const listEl = $("smsThreadList");
-  if (listEl) {
-    Array.from(listEl.querySelectorAll(".sms-thread-item")).forEach(el =>
-      el.classList.remove("active")
-    );
-  }
-});
 
 
 // Tabs (SMS / Voicemails / Profile)
