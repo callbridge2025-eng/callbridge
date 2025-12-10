@@ -1298,8 +1298,8 @@ async function sendSms(){
   }
 }
 
+// ---------- SMS layout helpers: open/close chat ----------
 
-  // Open SMS chat pane (for existing or new conversation)
 function openSmsChat(number = "") {
   currentThreadNumber = number;
 
@@ -1307,47 +1307,63 @@ function openSmsChat(number = "") {
   const listPane = $("smsThreadsPane");
   const chatPane = $("smsChatPane");
 
-  // Show split layout (list + chat)
+  // When chat opens -> remove "list-only", hide list, show chat full-width
   if (layout)   layout.classList.remove("list-only");
-  if (listPane) listPane.style.display = "block";
+  if (listPane) listPane.style.display = "none";
   if (chatPane) chatPane.style.display = "flex";
 
-  $("smsTo").value   = number || "";
+  // Reset composer fields
+  $("smsTo").value = number || "";
   $("smsBody").value = "";
+  if ($("smsFile"))      $("smsFile").value = "";
+  if ($("smsFileName"))  $("smsFileName").innerText = "";
+  smsAttachmentUrl = "";
 
-  $("smsThreadHeader").innerText = number
-    ? showE164(number)
-    : "New Message";
+  if (number) {
+    // Existing conversation -> let renderSmsThreadMessages show bubbles
+    renderSmsThreadMessages();
+  } else {
+    // New message mode
+    $("smsThreadHeader").innerText = "New Message";
+    $("smsThreadMessages").innerHTML =
+      '<div class="muted" style="font-size:12px">Start a new message…</div>';
+  }
 
-  renderSmsThreadMessages();
-  renderSmsThreads(); // update highlight
+  // Update left list highlight
+  renderSmsThreads();
 }
 
-// Close chat pane → show only conversation list (for “Back” button)
 function closeSmsChat() {
   const layout   = $("smsLayout");
   const listPane = $("smsThreadsPane");
   const chatPane = $("smsChatPane");
 
-  if (chatPane) chatPane.style.display = "none";
-  if (listPane) listPane.style.display = "block";
+  // Back to list-only mode
   if (layout)   layout.classList.add("list-only");
-}
+  if (listPane) listPane.style.display = "block";
+  if (chatPane) chatPane.style.display = "none";
 
-// “New Message” button handler
-function handleNewChat() {
-  currentThreadNumber = "";
+  // Clear composer but keep currentThreadNumber (so highlight still makes sense)
   $("smsTo").value = "";
   $("smsBody").value = "";
-
-  const msgContainer = $("smsThreadMessages");
-  if (msgContainer) {
-    msgContainer.innerHTML =
-      '<div class="muted" style="font-size:12px">Start a new message…</div>';
-  }
-
-  openSmsChat("");  // open chat pane in new-message mode
+  if ($("smsFile"))      $("smsFile").value = "";
+  if ($("smsFileName"))  $("smsFileName").innerText = "";
 }
+
+function handleNewChat() {
+  currentThreadNumber = ""; // new conversation
+  $("smsTo").value = "";
+  $("smsBody").value = "";
+  if ($("smsFile"))      $("smsFile").value = "";
+  if ($("smsFileName"))  $("smsFileName").innerText = "";
+
+  $("smsThreadHeader").innerText = "New Message";
+  $("smsThreadMessages").innerHTML =
+    '<div class="muted" style="font-size:12px">Start a new message…</div>';
+
+  openSmsChat(""); // switch layout into chat mode
+}
+
 
 
 
