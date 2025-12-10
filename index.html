@@ -1148,6 +1148,7 @@ function renderSmsThreads(){
 }
 
 // Render right-side chat messages for selected thread
+// Render right-side chat messages for selected thread
 function renderSmsThreadMessages(){
   const container = $("smsThreadMessages");
   const header = $("smsThreadHeader");
@@ -1164,7 +1165,15 @@ function renderSmsThreadMessages(){
   header.innerText = showE164(currentThreadNumber);
 
   // Filter logs for this conversation
-  const msgs = smsLogs.filter(m => smsOtherParty(m) === currentThreadNumber);
+  let msgs = smsLogs.filter(m => smsOtherParty(m) === currentThreadNumber);
+
+  // 🔽 IMPORTANT: sort by time ASC so oldest is on top, newest at bottom
+  msgs.sort((a, b) => {
+    const ta = new Date(a.created_at || a.timestamp || 0).getTime();
+    const tb = new Date(b.created_at || b.timestamp || 0).getTime();
+    return ta - tb; // older first
+  });
+
   if (msgs.length === 0){
     container.innerHTML = '<div class="muted" style="font-size:12px">No messages yet in this conversation.</div>';
     return;
@@ -1187,7 +1196,7 @@ function renderSmsThreadMessages(){
     container.appendChild(bubble);
   });
 
-  // Scroll to bottom
+  // Scroll to bottom so latest message is visible
   container.scrollTop = container.scrollHeight;
 }
 
