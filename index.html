@@ -1299,6 +1299,57 @@ async function sendSms(){
 }
 
 
+  // Open SMS chat pane (for existing or new conversation)
+function openSmsChat(number = "") {
+  currentThreadNumber = number;
+
+  const layout   = $("smsLayout");
+  const listPane = $("smsThreadsPane");
+  const chatPane = $("smsChatPane");
+
+  // Show split layout (list + chat)
+  if (layout)   layout.classList.remove("list-only");
+  if (listPane) listPane.style.display = "block";
+  if (chatPane) chatPane.style.display = "flex";
+
+  $("smsTo").value   = number || "";
+  $("smsBody").value = "";
+
+  $("smsThreadHeader").innerText = number
+    ? showE164(number)
+    : "New Message";
+
+  renderSmsThreadMessages();
+  renderSmsThreads(); // update highlight
+}
+
+// Close chat pane → show only conversation list (for “Back” button)
+function closeSmsChat() {
+  const layout   = $("smsLayout");
+  const listPane = $("smsThreadsPane");
+  const chatPane = $("smsChatPane");
+
+  if (chatPane) chatPane.style.display = "none";
+  if (listPane) listPane.style.display = "block";
+  if (layout)   layout.classList.add("list-only");
+}
+
+// “New Message” button handler
+function handleNewChat() {
+  currentThreadNumber = "";
+  $("smsTo").value = "";
+  $("smsBody").value = "";
+
+  const msgContainer = $("smsThreadMessages");
+  if (msgContainer) {
+    msgContainer.innerHTML =
+      '<div class="muted" style="font-size:12px">Start a new message…</div>';
+  }
+
+  openSmsChat("");  // open chat pane in new-message mode
+}
+
+
 
 /* ---------- Voicemails ---------- */
 async function refreshVoicemails(){
@@ -1470,9 +1521,6 @@ $("smsNewChatBtn").addEventListener("click", handleNewChat);
 $("sendSmsBtn").addEventListener("click", sendSms);
 $("refreshSmsBtn").addEventListener("click", refreshSms);
 $("smsBackBtn").addEventListener("click", closeSmsChat);
-$("smsAttachBtn").addEventListener("click", () => {
-  $("smsFileInput").click();
-});
 
 // Handle file selection + upload
 $("smsFile").addEventListener("change", async (e) => {
