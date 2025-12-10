@@ -720,16 +720,19 @@ def send_sms():
         data = request.get_json(force=True) or {}
         to_raw = data.get("to")
         body = (data.get("body") or "").strip()
-        attachment_url = (data.get("attachmentUrl") or "").strip()
+        attachment_url = (data.get("attachmentUrl") or data.get("attachment_url") or "").strip()
 
         # who is sending?
         auth_email = auth_from_token(request.headers.get("Authorization", "")) \
                      or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
         user_email = (data.get("user_email") or auth_email or "").strip().lower()
 
-        # ✅ allow: text only, file only, or both
-        if not to_raw or (not body and not attachment_url):
-            return json_cors({"error": "Missing 'to' and either 'body' or 'attachmentUrl'."}, 400)
+        if not to_raw:
+            return json_cors({"error": "Missing 'to'."}, 400)
+
+        # allow: text only, file only, or both
+        if not body and not attachment_url:
+            return json_cors({"error": "Either 'body' or 'attachmentUrl' is required."}, 400)
 
         # ---- Resolve user and from-number ----
         user = find_user_by_email(user_email) if user_email else None
@@ -746,43 +749,35 @@ def send_sms():
 
         to_number = to_e164(to_raw)
 
+        # ---- Send SMS/MMS via Twilio ----
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-        # ---- Send SMS/MMS via Twilio ----
+        msg_kwargs = {
+            "from_": from_number,
+            "to": to_number,
+        }
+        if body:
+            msg_kwargs["body"] = body
         if attachment_url:
-            # ✅ MMS: send attachment + optional text
-            msg = client.messages.create(
-                from_=from_number,
-                to=to_number,
-                body=body or "",          # text can be empty
-                media_url=[attachment_url]
-            )
-        else:
-            # plain SMS
-            msg = client.messages.create(
-                from_=from_number,
-                to=to_number,
-                body=body,
-            )
+            # MMS: Twilio will render the media in the recipient's app
+            msg_kwargs["media_url"] = [attachment_url]
 
+        msg = client.messages.create(**msg_kwargs)
         print(f"✅ SMS/MMS sent from {from_number} to {to_number}, SID: {msg.sid}")
 
         # ---- Log to Google Sheet (SMSLogs tab) ----
         try:
             ws_sms = sh.worksheet("SMSLogs")
-
-            # For the Body column, store either text or the attachment URL
-            body_for_log = body or attachment_url or ""
-
             ws_sms.append_row([
                 datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 "outgoing",          # Direction
                 from_number,         # From
                 to_number,           # To
-                body_for_log,        # Body (text or URL)
-                user_email,          # User Email
+                body,                # Body (text)
+                user_email,          # User Email (owner in app)
                 "sent",              # Status
-                msg.sid              # SID
+                msg.sid,             # SID
+                attachment_url       # AttachmentUrl (new column)
             ])
         except Exception as e:
             print("⚠️ Failed to write to SMSLogs:", e, traceback.format_exc())
@@ -792,7 +787,6 @@ def send_sms():
     except Exception as e:
         print("❌ Error in /send-sms:", e, traceback.format_exc())
         return json_cors({"error": "Failed to send SMS"}, 500)
-
 
 
 
@@ -820,14 +814,19 @@ def sms_logs():
             row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
             if is_admin or row_email == auth_email:
                 items.append({
-                    "created_at": r.get("Timestamp") or r.get("timestamp"),
-                    "direction": r.get("Direction") or r.get("direction"),
-                    "from_number": r.get("From") or r.get("from"),
-                    "to_number": r.get("To") or r.get("to"),
-                    "body": r.get("Body") or r.get("body"),
-                    "status": r.get("Status") or r.get("status"),
-                    "sid": r.get("SID") or r.get("sid")
-                })
+    "created_at": r.get("Timestamp") or r.get("timestamp"),
+    "direction": r.get("Direction") or r.get("direction"),
+    "from_number": r.get("From") or r.get("from"),
+    "to_number": r.get("To") or r.get("to"),
+    "body": r.get("Body") or r.get("body"),
+    "status": r.get("Status") or r.get("status"),
+    "sid": r.get("SID") or r.get("sid"),
+    "attachment_url": (
+        r.get("AttachmentUrl") or
+        r.get("attachment_url") or
+        ""
+    )
+})
 
         items = list(reversed(items))
         return jsonify(items), 200
