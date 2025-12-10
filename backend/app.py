@@ -759,7 +759,7 @@ def send_sms():
         if body:
             msg_kwargs["body"] = body
         if attachment_url:
-            # MMS: Twilio will render the media in the recipient's app
+            # MMS: Twilio will render the media in the recipient's SMS app
             msg_kwargs["media_url"] = [attachment_url]
 
         msg = client.messages.create(**msg_kwargs)
@@ -767,18 +767,22 @@ def send_sms():
 
         # ---- Log to Google Sheet (SMSLogs tab) ----
         try:
-            ws_sms = sh.worksheet("SMSLogs")
-            ws_sms.append_row([
-                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                "outgoing",          # Direction
-                from_number,         # From
-                to_number,           # To
-                body,                # Body (text)
-                user_email,          # User Email (owner in app)
-                "sent",              # Status
-                msg.sid,             # SID
-                attachment_url       # AttachmentUrl (new column)
-            ])
+            # Make sure your SMSLogs sheet has a header column named "AttachmentUrl"
+            # Timestamp | Direction | From | To | Body | User Email | Status | SID | AttachmentUrl
+            append_row_raw(
+                sms_ws,
+                [
+                    datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    "outgoing",      # Direction
+                    from_number,     # From
+                    to_number,       # To
+                    body,            # Body (text)
+                    user_email,      # User Email
+                    "sent",          # Status
+                    msg.sid,         # SID
+                    attachment_url   # AttachmentUrl (can be empty)
+                ]
+            )
         except Exception as e:
             print("⚠️ Failed to write to SMSLogs:", e, traceback.format_exc())
 
@@ -800,7 +804,6 @@ def sms_logs():
                      or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
 
         if not auth_email:
-            # Same behavior as /calls – just return empty
             return jsonify([])
 
         viewer = find_user_by_email(auth_email)
@@ -813,29 +816,23 @@ def sms_logs():
         for r in rows:
             row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
             if is_admin or row_email == auth_email:
-                            items.append({
-                "created_at": r.get("Timestamp") or r.get("timestamp"),
-                "direction": r.get("Direction") or r.get("direction"),
-                "from_number": r.get("From") or r.get("from"),
-                "to_number": r.get("To") or r.get("to"),
-                "body": r.get("Body") or r.get("body"),
-                "status": r.get("Status") or r.get("status"),
-                "sid": r.get("SID") or r.get("sid"),
-                # 🔹 New: attachment URL from Google Sheet
-                "attachment_url": (
-                    r.get("AttachmentUrl")
-                    or r.get("Attachment URL")
-                    or r.get("attachment_url")
-                    or ""
-                ),
-            })
-
+                items.append({
+                    "created_at": r.get("Timestamp") or r.get("timestamp"),
+                    "direction": r.get("Direction") or r.get("direction"),
+                    "from_number": r.get("From") or r.get("from"),
+                    "to_number": r.get("To") or r.get("to"),
+                    "body": r.get("Body") or r.get("body"),
+                    "status": r.get("Status") or r.get("status"),
+                    "sid": r.get("SID") or r.get("sid"),
+                    "attachment_url": r.get("AttachmentUrl") or r.get("attachment_url") or ""
+                })
 
         items = list(reversed(items))
         return jsonify(items), 200
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 
