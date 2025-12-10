@@ -1034,7 +1034,6 @@ function renderHistoryItems(items){
   });
 }
 
-/* ---------- SMS ---------- */
 /* ---------- SMS (chat-style) ---------- */
 
 // Helper: figure out the "other party" number for a log row
@@ -1108,7 +1107,6 @@ function renderSmsThreads(){
       $("smsTo").value = t.number;           // fill To with this number
       renderSmsThreads();                    // re-highlight
       renderSmsThreadMessages();             // show messages
-      $("smsNewChatBtn").addEventListener("click", handleNewChat);
     });
 
     container.appendChild(div);
@@ -1429,6 +1427,7 @@ $("declineBtn").addEventListener("click", declineIncoming);
 $("logoutBtn").addEventListener("click", async ()=>{ await performLogout(); });
 $("speakerBtn").addEventListener("click", toggleSpeaker);
 // SMS
+$("smsNewChatBtn").addEventListener("click", handleNewChat);
 $("sendSmsBtn").addEventListener("click", sendSms);
 $("refreshSmsBtn").addEventListener("click", refreshSms);
 
