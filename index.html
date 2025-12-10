@@ -295,55 +295,44 @@
       </div>
 
       <div class="smsLayout">
-        <!-- LEFT: conversation list -->
-        <div class="smsThreads">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span class="muted" style="font-size:12px">Conversations</span>
-            <button id="refreshSmsBtn" class="btn gray" style="padding:4px 8px;font-size:11px" type="button">⟳</button>
-          </div>
-          <div id="smsThreadsList" class="threadsList">
-            <div class="muted" style="font-size:12px">No messages yet</div>
-          </div>
-        </div>
 
-        <!-- RIGHT: chat view + composer -->
-        <div class="smsThreadPane">
-          <div id="smsThreadHeader" class="threadHeader muted">
-            No chat selected
-          </div>
-
-          <div id="smsThreadMessages" class="threadMessages">
-            <div class="muted" style="font-size:12px">
-              Select a conversation on the left, or start a new message below.
-            </div>
-          </div>
-
-          <div class="threadComposer">
-            <div class="muted" style="font-size:12px">To</div>
-            <input
-              id="smsTo"
-              type="tel"
-              inputmode="tel"
-              placeholder="+1..."
-              style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef"
-            />
-            <textarea
-              id="smsBody"
-              rows="2"
-              placeholder="Type your message..."
-              style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;resize:vertical"
-            ></textarea>
-            <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
-              <button id="sendSmsBtn" class="btn call" style="flex:0 0 auto" type="button">Send</button>
-              <div style="flex:1">
-                <div id="smsError" class="muted" style="color:var(--danger);margin-top:2px;display:none"></div>
-                <div id="smsSuccess" class="muted" style="color:var(--green);margin-top:2px;display:none"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+  <!-- LEFT: conversation list -->
+  <div class="smsThreads">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span class="muted" style="font-size:12px">Conversations</span>
+      <button id="refreshSmsBtn" class="btn gray" style="padding:4px 8px;font-size:11px" type="button">⟳</button>
     </div>
+
+    <div id="smsThreadsList" class="threadsList">
+      <div class="muted" style="font-size:12px">No messages yet</div>
+    </div>
+
+    <button id="smsNewChatBtn" class="btn call" style="margin-top:10px;width:100%;padding:8px 10px">
+      ➕ New Message
+    </button>
+  </div>
+
+  <!-- RIGHT: chat view (hidden until opened) -->
+  <div id="smsChatPane" class="smsThreadPane" style="display:none">
+
+    <div id="smsThreadHeader" class="threadHeader muted"></div>
+
+    <div id="smsThreadMessages" class="threadMessages"></div>
+
+    <div class="threadComposer">
+      <div class="muted" style="font-size:12px">To</div>
+      <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
+      <textarea id="smsBody" rows="2" placeholder="Type your message..."></textarea>
+
+      <button id="sendSmsBtn" class="btn call" type="button">Send</button>
+
+      <div id="smsError" class="muted" style="color:var(--danger);display:none"></div>
+      <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
+    </div>
+
+  </div>
+</div>
+
 
 
 
@@ -1119,6 +1108,7 @@ function renderSmsThreads(){
       $("smsTo").value = t.number;           // fill To with this number
       renderSmsThreads();                    // re-highlight
       renderSmsThreadMessages();             // show messages
+      $("smsNewChatBtn").addEventListener("click", handleNewChat);
     });
 
     container.appendChild(div);
@@ -1244,6 +1234,31 @@ async function sendSms(){
     $("smsError").innerText = "Network error";
     $("smsError").style.display = "block";
   }
+}
+
+  function openSmsChat(number = "") {
+  currentThreadNumber = number;
+  $("smsChatPane").style.display = "flex";
+  $("smsTo").value = number || "";
+  renderSmsThreadMessages();
+  renderSmsThreads();
+}
+
+function closeSmsChat() {
+  $("smsChatPane").style.display = "none";
+  currentThreadNumber = "";
+  $("smsTo").value = "";
+  $("smsBody").value = "";
+}
+
+function handleNewChat() {
+  currentThreadNumber = "";
+  $("smsTo").value = "";
+  $("smsBody").value = "";
+  $("smsThreadHeader").innerText = "New Message";
+  $("smsThreadMessages").innerHTML =
+    '<div class="muted" style="font-size:12px">Start a new message…</div>';
+  $("smsChatPane").style.display = "flex";
 }
 
 
