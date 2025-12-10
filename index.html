@@ -97,6 +97,160 @@
   }
 }
 
+    /* --- SMS chat layout (WhatsApp-style) --- */
+.sms-layout{
+  display:flex;
+  flex-direction:row;
+  gap:10px;
+  height:calc(100% - 40px);
+  min-height:0;
+}
+
+.sms-threads{
+  width:32%;
+  min-width:180px;
+  display:flex;
+  flex-direction:column;
+  border-right:1px solid #e5e7eb;
+  padding-right:8px;
+}
+
+.sms-threads-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+}
+
+.sms-thread-list{
+  flex:1;
+  overflow:auto;
+  margin-top:8px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.sms-thread-item{
+  padding:8px 10px;
+  border-radius:10px;
+  cursor:pointer;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.sms-thread-item:hover{
+  background:#f3f4ff;
+}
+.sms-thread-item.active{
+  background:var(--accent);
+  color:#fff;
+}
+.sms-thread-item .peer{
+  font-weight:600;
+  font-size:14px;
+}
+.sms-thread-item .snippet{
+  font-size:12px;
+  opacity:0.9;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sms-thread-item .time{
+  font-size:11px;
+  opacity:0.8;
+  align-self:flex-end;
+}
+
+.sms-thread-view{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+
+.sms-thread-header{
+  padding-bottom:8px;
+  border-bottom:1px solid #e5e7eb;
+  margin-bottom:8px;
+}
+
+.sms-messages{
+  flex:1;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding-right:4px;
+}
+
+/* message bubbles */
+.sms-msg-row{
+  display:flex;
+}
+.sms-msg-row.me{
+  justify-content:flex-end;
+}
+.sms-msg-row.them{
+  justify-content:flex-start;
+}
+
+.sms-msg{
+  max-width:70%;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.sms-bubble{
+  padding:8px 10px;
+  border-radius:14px;
+  font-size:13px;
+  line-height:1.35;
+  word-wrap:break-word;
+  white-space:pre-wrap;
+}
+.sms-msg-row.me .sms-bubble{
+  background:var(--accent);
+  color:#fff;
+  border-bottom-right-radius:4px;
+}
+.sms-msg-row.them .sms-bubble{
+  background:#f3f4ff;
+  border-bottom-left-radius:4px;
+}
+.sms-msg-time{
+  font-size:11px;
+  color:var(--muted);
+}
+
+.sms-input-bar{
+  display:flex;
+  gap:8px;
+  align-items:flex-end;
+  margin-top:8px;
+  border-top:1px solid #e5e7eb;
+  padding-top:8px;
+}
+.sms-input-bar input{
+  width:140px;
+  padding:8px;
+  border-radius:8px;
+  border:1px solid #e6e9ef;
+  font-size:13px;
+}
+.sms-input-bar textarea{
+  flex:1;
+  resize:none;
+  min-height:42px;
+  max-height:80px;
+  padding:8px;
+  border-radius:8px;
+  border:1px solid #e6e9ef;
+  font-size:13px;
+}
+
+
 
     /* Login modal overrides (keeps the same card style) */
     #loginModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10000;align-items:center;justify-content:center}
@@ -185,28 +339,48 @@
       <button class="tabBtn" data-tab="profile">My Profile</button>
     </div>
 
-    <!-- SMS TAB -->
+  
+        <!-- SMS TAB -->
     <div id="smsTab">
       <h2>SMS</h2>
-      <div style="margin-top:10px">
-        <div class="muted" style="font-size:13px;margin-bottom:4px">Send new SMS</div>
-        <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef" />
-        <textarea id="smsBody" rows="3" placeholder="Type your message..." style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;resize:vertical"></textarea>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button id="sendSmsBtn" class="btn call" style="flex:1" type="button">Send SMS</button>
-        </div>
-        <div id="smsError" class="muted" style="color:var(--danger);margin-top:6px;display:none"></div>
-        <div id="smsSuccess" class="muted" style="color:var(--green);margin-top:6px;display:none"></div>
-      </div>
 
-      <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
-        <div class="muted">Recent messages</div>
-        <button id="refreshSmsBtn" class="btn gray" style="padding:4px 8px;font-size:12px" type="button">Refresh</button>
-      </div>
-      <div id="smsList" style="margin-top:8px">
-        <div class="muted">No messages yet</div>
+      <div id="smsChatLayout" class="sms-layout" style="margin-top:10px">
+        <!-- Left: conversation list -->
+        <div class="sms-threads">
+          <div class="sms-threads-header">
+            <span class="muted">Conversations</span>
+            <div style="display:flex;gap:6px">
+              <button id="smsNewChatBtn" class="btn gray" type="button" style="padding:4px 8px;font-size:12px">New</button>
+              <button id="refreshSmsBtn" class="btn gray" type="button" style="padding:4px 8px;font-size:12px">Refresh</button>
+            </div>
+          </div>
+          <div id="smsThreadList" class="sms-thread-list">
+            <div class="muted">Loading messages...</div>
+          </div>
+        </div>
+
+        <!-- Right: active thread view -->
+        <div class="sms-thread-view">
+          <div class="sms-thread-header">
+            <div id="smsThreadTitle" style="font-weight:600;color:#111827;font-size:14px">Select a conversation</div>
+            <div class="muted" style="font-size:12px">Messages appear here</div>
+          </div>
+
+          <div id="smsMessages" class="sms-messages">
+            <div class="muted">No conversation selected</div>
+          </div>
+
+          <div class="sms-input-bar">
+            <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
+            <textarea id="smsBody" placeholder="Type your message..."></textarea>
+            <button id="sendSmsBtn" class="btn call" type="button">Send</button>
+          </div>
+          <div id="smsError" class="muted" style="color:var(--danger);margin-top:6px;display:none"></div>
+          <div id="smsSuccess" class="muted" style="color:var(--green);margin-top:6px;display:none"></div>
+        </div>
       </div>
     </div>
+
 
     <!-- VOICEMAILS TAB -->
     <div id="voicemailsTab" style="display:none">
@@ -363,6 +537,10 @@ let timerInterval = null;
 let wfRaf = null;
 let historyPollInterval = null;
 let localStream = null;
+let smsAll = [];
+let smsThreads = {};
+let currentSmsPeerKey = null; // display label (showE164) used as key
+
 
 /* auth helpers */
 function getAuthToken(){ return localStorage.getItem("auth_token"); }
@@ -907,8 +1085,17 @@ async function sendSms(){
   $("smsError").style.display = "none";
   $("smsSuccess").style.display = "none";
 
-  const to = $("smsTo").value.trim();
+  let to = $("smsTo").value.trim();
   const body = $("smsBody").value.trim();
+
+  // If we are in an open thread but "To" field is empty, use that thread's number
+  if (currentSmsPeerKey && !to) {
+    const thread = smsThreads[currentSmsPeerKey];
+    if (thread && thread.peerRaw) {
+      to = thread.peerRaw;
+      $("smsTo").value = to;
+    }
+  }
 
   if (!to || !body) {
     $("smsError").innerText = "Number and message are required.";
@@ -917,7 +1104,9 @@ async function sendSms(){
   }
 
   try {
-    const emailQS = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const emailQS = currentUser && currentUser.email
+      ? `?email=${encodeURIComponent(currentUser.email)}`
+      : "";
     const res = await fetch(`${API_BASE}/send-sms${emailQS}`, {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
@@ -935,6 +1124,12 @@ async function sendSms(){
     $("smsSuccess").innerText = "Message sent.";
     $("smsSuccess").style.display = "block";
     $("smsBody").value = "";
+
+    // Ensure we land in that conversation
+    if (!currentSmsPeerKey) {
+      currentSmsPeerKey = showE164(to);
+    }
+
     await refreshSms();
   } catch (e) {
     console.error("sendSms error", e);
@@ -943,76 +1138,147 @@ async function sendSms(){
   }
 }
 
-async function refreshSms(){
-  try {
-    if (!currentUser) return;
-    const email = currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
-    const res = await fetch(`${API_BASE}/sms-logs${email}`, {
-      method: "GET",
-      headers: Object.assign({}, authHeaders())
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    renderSmsItems(data);
-  } catch (e) {
-    console.error("refreshSms error", e);
-  }
-}
 
-function renderSmsItems(items){
-  const container = $("smsList");
-  if (!container) return;
-  container.innerHTML = "";
+function renderSmsThreadsAndMessages(){
+  const listEl = $("smsThreadList");
+  const msgsEl = $("smsMessages");
+  const titleEl = $("smsThreadTitle");
+  if (!listEl || !msgsEl || !titleEl) return;
 
-  if (!Array.isArray(items) || items.length === 0) {
-    container.innerHTML = '<div class="muted">No messages yet</div>';
+  // Build threads keyed by normalized/display number
+  smsThreads = {};
+  smsAll.forEach(m => {
+    const dir = (m.direction || "").toLowerCase();
+    let peerRaw = "";
+    if (dir === "incoming") {
+      peerRaw = m.from_number || m.from || "";
+    } else {
+      peerRaw = m.to_number || m.to || m.from_number || "";
+    }
+    peerRaw = (peerRaw || "").trim();
+    if (!peerRaw) return;
+
+    const key = showE164(peerRaw); // use pretty label as the thread key
+    if (!smsThreads[key]) {
+      smsThreads[key] = { peerRaw, items: [] };
+    }
+    smsThreads[key].items.push(m);
+  });
+
+  const keys = Object.keys(smsThreads);
+  listEl.innerHTML = "";
+
+  if (keys.length === 0) {
+    listEl.innerHTML = '<div class="muted">No messages yet</div>';
+    msgsEl.innerHTML = '<div class="muted">No conversation selected</div>';
+    titleEl.innerText = "Select a conversation";
+    currentSmsPeerKey = null;
+    $("smsTo").value = "";
     return;
   }
 
-  items.forEach(m => {
-    const div = document.createElement("div");
-    div.className = "history-item";
+  // sort threads by most recent message time (descending)
+  function lastTime(thread){
+    let max = 0;
+    thread.items.forEach(m => {
+      const t = new Date(m.created_at || Date.now()).getTime() || 0;
+      if (t > max) max = t;
+    });
+    return max;
+  }
+  keys.sort((a,b) => lastTime(smsThreads[b]) - lastTime(smsThreads[a]));
 
-    const left = document.createElement("div");
-    left.style.display = "flex";
-    left.style.flexDirection = "column";
+  // ensure we have a current thread
+  if (!currentSmsPeerKey || !smsThreads[currentSmsPeerKey]) {
+    currentSmsPeerKey = keys[0];
+  }
 
-    const badge = document.createElement("div");
-    badge.className = "badge";
-    badge.innerText = (m.direction || "SMS").toUpperCase();
+  // render thread list
+  keys.forEach(k => {
+    const thread = smsThreads[k];
+    const sorted = thread.items.slice().sort((a,b) => {
+      return (new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    });
+    const last = sorted[sorted.length - 1];
 
-    const main = document.createElement("div");
-    main.style.fontWeight = 700;
-
-    const dir = (m.direction || "").toLowerCase();
-    let displayNum = "";
-    if (dir === "incoming") {
-      displayNum = m.from_number || m.from || "";
-    } else {
-      displayNum = m.to_number || m.to || m.from_number || "";
-    }
-    main.innerText = showE164(displayNum);
-
-    const sub = document.createElement("div");
-    sub.className = "muted";
-    sub.style.fontSize = "12px";
-    sub.innerText = (m.body || "").slice(0, 80);
-
-    left.appendChild(badge);
-    left.appendChild(main);
-    left.appendChild(sub);
-
-    const right = document.createElement("div");
-    right.style.textAlign = "right";
-    right.innerHTML = `
-      <div class="muted">${new Date(m.created_at || Date.now()).toLocaleString()}</div>
+    const item = document.createElement("div");
+    item.className = "sms-thread-item" + (k === currentSmsPeerKey ? " active" : "");
+    item.setAttribute("data-peer-key", k);
+    item.innerHTML = `
+      <div class="peer">${k}</div>
+      <div class="snippet">${(last.body || "").slice(0, 60)}</div>
+      <div class="time">${last.created_at ? new Date(last.created_at).toLocaleString() : ""}</div>
     `;
-
-    div.appendChild(left);
-    div.appendChild(right);
-    container.appendChild(div);
+    item.addEventListener("click", () => {
+      currentSmsPeerKey = k;
+      renderCurrentSmsThread();
+    });
+    listEl.appendChild(item);
   });
+
+  renderCurrentSmsThread();
 }
+
+function renderCurrentSmsThread(){
+  const msgsEl = $("smsMessages");
+  const titleEl = $("smsThreadTitle");
+  if (!msgsEl || !titleEl) return;
+
+  msgsEl.innerHTML = "";
+
+  const thread = smsThreads[currentSmsPeerKey];
+  if (!thread) {
+    titleEl.innerText = "Select a conversation";
+    msgsEl.innerHTML = '<div class="muted">No conversation selected</div>';
+    return;
+  }
+
+  titleEl.innerText = showE164(thread.peerRaw || currentSmsPeerKey);
+  $("smsTo").value = thread.peerRaw || "";
+
+  const sorted = thread.items.slice().sort((a,b) => {
+    return (new Date(a.created_at || 0) - new Date(b.created_at || 0));
+  });
+
+  sorted.forEach(m => {
+    const dir = (m.direction || "").toLowerCase();
+    const row = document.createElement("div");
+    row.className = "sms-msg-row " + (dir === "incoming" ? "them" : "me");
+
+    const msgWrap = document.createElement("div");
+    msgWrap.className = "sms-msg";
+
+    const bubble = document.createElement("div");
+    bubble.className = "sms-bubble";
+    bubble.innerText = m.body || "";
+
+    const time = document.createElement("div");
+    time.className = "sms-msg-time";
+    time.innerText = m.created_at
+      ? new Date(m.created_at).toLocaleTimeString()
+      : "";
+
+    msgWrap.appendChild(bubble);
+    msgWrap.appendChild(time);
+    row.appendChild(msgWrap);
+    msgsEl.appendChild(row);
+  });
+
+  // Scroll to latest message
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+
+  // Update active highlight in list
+  const listEl = $("smsThreadList");
+  if (listEl) {
+    Array.from(listEl.querySelectorAll(".sms-thread-item")).forEach(el => {
+      el.classList.toggle(
+        "active",
+        el.getAttribute("data-peer-key") === currentSmsPeerKey
+      );
+    });
+  }
+}
+
 
 /* ---------- Voicemails ---------- */
 async function refreshVoicemails(){
@@ -1182,6 +1448,23 @@ $("speakerBtn").addEventListener("click", toggleSpeaker);
 // SMS
 $("sendSmsBtn").addEventListener("click", sendSms);
 $("refreshSmsBtn").addEventListener("click", refreshSms);
+  // Start a brand new conversation
+$("smsNewChatBtn").addEventListener("click", () => {
+  currentSmsPeerKey = null;
+  $("smsThreadTitle").innerText = "New message";
+  $("smsMessages").innerHTML =
+    '<div class="muted">Start a new conversation by typing a number and message below.</div>';
+  $("smsTo").value = "";
+  $("smsBody").value = "";
+
+  const listEl = $("smsThreadList");
+  if (listEl) {
+    Array.from(listEl.querySelectorAll(".sms-thread-item")).forEach(el =>
+      el.classList.remove("active")
+    );
+  }
+});
+
 
 // Tabs (SMS / Voicemails / Profile)
 const tabButtons = document.querySelectorAll(".tabBtn");
