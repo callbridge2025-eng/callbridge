@@ -297,20 +297,37 @@
       <div class="smsLayout">
 
   <!-- LEFT: conversation list -->
-  <div id="smsThreadsPane" class="smsThreads">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <span class="muted" style="font-size:12px">Conversations</span>
-      <button id="refreshSmsBtn" class="btn gray" style="padding:4px 8px;font-size:11px" type="button">⟳</button>
-    </div>
+  <div class="smsThreads">
+  <!-- Top row: title + New Message + refresh -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <span class="muted" style="font-size:12px">Conversations</span>
 
-    <div id="smsThreadsList" class="threadsList">
-      <div class="muted" style="font-size:12px">No messages yet</div>
-    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button
+        id="smsNewChatBtn"
+        class="btn call"
+        style="padding:4px 8px;font-size:11px"
+        type="button"
+      >
+        ➕ New Message
+      </button>
 
-    <button id="smsNewChatBtn" class="btn call" style="margin-top:10px;width:100%;padding:8px 10px">
-      ➕ New Message
-    </button>
+      <button
+        id="refreshSmsBtn"
+        class="btn gray"
+        style="padding:4px 8px;font-size:11px"
+        type="button"
+      >
+        ⟳
+      </button>
+    </div>
   </div>
+
+  <!-- Conversation list below -->
+  <div id="smsThreadsList" class="threadsList">
+    <div class="muted" style="font-size:12px">No messages yet</div>
+  </div>
+</div>
 
   
   <!-- RIGHT: chat view (hidden until opened) -->
