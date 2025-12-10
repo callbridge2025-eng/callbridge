@@ -297,7 +297,7 @@
       <div class="smsLayout">
 
   <!-- LEFT: conversation list -->
-  <div class="smsThreads">
+  <div id="smsThreadsPane" class="smsThreads">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <span class="muted" style="font-size:12px">Conversations</span>
       <button id="refreshSmsBtn" class="btn gray" style="padding:4px 8px;font-size:11px" type="button">⟳</button>
@@ -312,26 +312,37 @@
     </button>
   </div>
 
+  
   <!-- RIGHT: chat view (hidden until opened) -->
-  <div id="smsChatPane" class="smsThreadPane" style="display:none">
+<div id="smsChatPane" class="smsThreadPane" style="display:none">
 
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <button
+      id="smsBackBtn"
+      class="btn gray"
+      type="button"
+      style="padding:4px 8px;font-size:11px"
+    >
+      ← Back
+    </button>
     <div id="smsThreadHeader" class="threadHeader muted"></div>
-
-    <div id="smsThreadMessages" class="threadMessages"></div>
-
-    <div class="threadComposer">
-      <div class="muted" style="font-size:12px">To</div>
-      <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
-      <textarea id="smsBody" rows="2" placeholder="Type your message..."></textarea>
-
-      <button id="sendSmsBtn" class="btn call" type="button">Send</button>
-
-      <div id="smsError" class="muted" style="color:var(--danger);display:none"></div>
-      <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
-    </div>
-
   </div>
+
+  <div id="smsThreadMessages" class="threadMessages"></div>
+
+  <div class="threadComposer">
+    <div class="muted" style="font-size:12px">To</div>
+    <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
+    <textarea id="smsBody" rows="2" placeholder="Type your message..."></textarea>
+
+    <button id="sendSmsBtn" class="btn call" type="button">Send</button>
+
+    <div id="smsError" class="muted" style="color:var(--danger);display:none"></div>
+    <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
+  </div>
+
 </div>
+
 
 
 
@@ -1103,11 +1114,9 @@ function renderSmsThreads(){
     div.appendChild(snippet);
 
     div.addEventListener("click", () => {
-      currentThreadNumber = t.number;
-      $("smsTo").value = t.number;           // fill To with this number
-      renderSmsThreads();                    // re-highlight
-      renderSmsThreadMessages();             // show messages
-    });
+  openSmsChat(t.number);   // open chat + hide list
+});
+
 
     container.appendChild(div);
   });
@@ -1173,12 +1182,6 @@ async function refreshSms(){
     const data = await res.json();
     smsLogs = Array.isArray(data) ? data : [];
 
-    // If no current thread, pick the most recent conversation (if any)
-    if (!currentThreadNumber && smsLogs.length){
-      const last = smsLogs[smsLogs.length - 1];
-      currentThreadNumber = smsOtherParty(last);
-      $("smsTo").value = currentThreadNumber || "";
-    }
 
     renderSmsThreads();
     renderSmsThreadMessages();
@@ -1236,27 +1239,45 @@ async function sendSms(){
 
   function openSmsChat(number = "") {
   currentThreadNumber = number;
-  $("smsChatPane").style.display = "flex";
+
+  const listPane = $("smsThreadsPane");
+  const chatPane = $("smsChatPane");
+
+  if (listPane) listPane.style.display = "none";   // hide conversations
+  if (chatPane) chatPane.style.display = "flex";   // show chat pane
+
   $("smsTo").value = number || "";
+  $("smsBody").value = "";
+
+  $("smsThreadHeader").innerText = number
+    ? showE164(number)
+    : "New Message";
+
   renderSmsThreadMessages();
-  renderSmsThreads();
+  renderSmsThreads(); // to update active highlight if needed
 }
 
 function closeSmsChat() {
-  $("smsChatPane").style.display = "none";
-  currentThreadNumber = "";
+  const listPane = $("smsThreadsPane");
+  const chatPane = $("smsChatPane");
+
+  if (chatPane) chatPane.style.display = "none";   // hide chat
+  if (listPane) listPane.style.display = "block";  // show conversation list
+
   $("smsTo").value = "";
   $("smsBody").value = "";
+  // keep currentThreadNumber as-is so list highlight still makes sense
 }
 
 function handleNewChat() {
   currentThreadNumber = "";
   $("smsTo").value = "";
   $("smsBody").value = "";
-  $("smsThreadHeader").innerText = "New Message";
+
   $("smsThreadMessages").innerHTML =
     '<div class="muted" style="font-size:12px">Start a new message…</div>';
-  $("smsChatPane").style.display = "flex";
+
+  openSmsChat("");   // open chat pane in "new message" mode
 }
 
 
@@ -1430,6 +1451,7 @@ $("speakerBtn").addEventListener("click", toggleSpeaker);
 $("smsNewChatBtn").addEventListener("click", handleNewChat);
 $("sendSmsBtn").addEventListener("click", sendSms);
 $("refreshSmsBtn").addEventListener("click", refreshSms);
+$("smsBackBtn").addEventListener("click", closeSmsChat);
 
 
 // Tabs (SMS / Voicemails / Profile)
