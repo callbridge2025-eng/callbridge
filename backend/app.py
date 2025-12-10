@@ -19,6 +19,8 @@ from twilio.jwt.access_token.grants import VoiceGrant
 from twilio.twiml.voice_response import VoiceResponse, Dial
 import phonenumbers  # pip install phonenumbers
 from twilio.rest import Client  # <-- NEW for SMS
+from werkzeug.utils import secure_filename
+from flask import send_from_directory
 
 
 # ---------------- Flask App ----------------
@@ -687,6 +689,10 @@ from flask import request, make_response
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_SMS_FROM    = os.environ.get("TWILIO_SMS_FROM")  # your sending number
+# Where to store uploaded SMS attachments
+UPLOAD_FOLDER = os.environ.get("SMS_UPLOAD_FOLDER", "/tmp/sms_uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 
 
 def json_cors(data, status=200):
@@ -992,6 +998,52 @@ def vm_audio(rec_sid):
     except Exception as e:
         traceback.print_exc()
         return "Server error", 500
+
+
+
+@app.route("/upload-sms-file", methods=["POST", "OPTIONS"])
+def upload_sms_file():
+    # Handle CORS preflight
+    if request.method == "OPTIONS":
+        return json_cors({"ok": True}, 200)
+
+    try:
+        if "file" not in request.files:
+            return json_cors({"error": "No file part"}, 400)
+
+        f = request.files["file"]
+        if not f or f.filename == "":
+            return json_cors({"error": "No file selected"}, 400)
+
+        # Clean file name and make it unique
+        original = secure_filename(f.filename)
+        name, ext = os.path.splitext(original)
+        unique_name = f"{int(time.time())}_{secrets.token_hex(4)}{ext}"
+
+        save_path = os.path.join(UPLOAD_FOLDER, unique_name)
+        f.save(save_path)
+
+        # Public URL so Twilio can fetch it
+        public_url = _https_url(
+            f"{request.url_root.rstrip('/')}/sms-file/{unique_name}",
+            request
+        )
+
+        return json_cors({"url": public_url}, 200)
+
+    except Exception as e:
+        print("upload_sms_file error:", e, traceback.format_exc())
+        return json_cors({"error": "Upload failed"}, 500)
+
+
+
+@app.route("/sms-file/<path:filename>", methods=["GET"])
+def sms_file(filename):
+    try:
+        return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=False)
+    except Exception as e:
+        print("sms_file error:", e, traceback.format_exc())
+        return "Not found", 404
 
 
 
