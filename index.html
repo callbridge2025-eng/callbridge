@@ -1265,11 +1265,14 @@ async function sendSms(){
   function openSmsChat(number = "") {
   currentThreadNumber = number;
 
+  const layout   = $("smsLayout");
   const listPane = $("smsThreadsPane");
   const chatPane = $("smsChatPane");
 
-  if (listPane) listPane.style.display = "none";   // hide conversations
-  if (chatPane) chatPane.style.display = "flex";   // show chat pane
+  // hide list, show chat
+  if (listPane) listPane.style.display = "none";
+  if (chatPane) chatPane.style.display = "flex";
+  if (layout) layout.classList.remove("list-only");
 
   $("smsTo").value = number || "";
   $("smsBody").value = "";
@@ -1279,19 +1282,21 @@ async function sendSms(){
     : "New Message";
 
   renderSmsThreadMessages();
-  renderSmsThreads(); // to update active highlight if needed
+  renderSmsThreads(); // update highlight if needed
 }
 
 function closeSmsChat() {
+  const layout   = $("smsLayout");
   const listPane = $("smsThreadsPane");
   const chatPane = $("smsChatPane");
 
   if (chatPane) chatPane.style.display = "none";   // hide chat
   if (listPane) listPane.style.display = "block";  // show conversation list
+  if (layout) layout.classList.add("list-only");   // list goes full width
 
   $("smsTo").value = "";
   $("smsBody").value = "";
-  // keep currentThreadNumber as-is so list highlight still makes sense
+  // keep currentThreadNumber so the active thread stays highlighted
 }
 
 function handleNewChat() {
