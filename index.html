@@ -1146,8 +1146,14 @@ function renderSmsThreads(){
     title.innerText = showE164(t.number);
 
     const snippet = document.createElement("div");
-    snippet.className = "threadItemSnippet";
-    snippet.innerText = (t.lastMsg.body || "").slice(0, 60) || "—";
+snippet.className = "threadItemSnippet";
+
+let snippetText = (t.lastMsg.body || "").trim();
+if (!snippetText && t.lastMsg.attachment_url) {
+  snippetText = "[Attachment]";
+}
+snippet.innerText = snippetText.slice(0, 60) || "—";
+
 
     div.appendChild(title);
     div.appendChild(snippet);
@@ -1194,21 +1200,53 @@ function renderSmsThreadMessages(){
   }
 
   msgs.forEach(m => {
-    const dir = (m.direction || "").toLowerCase();
-    const bubble = document.createElement("div");
-    bubble.className = "smsBubble " + (dir === "incoming" ? "them" : "me");
+  const dir = (m.direction || "").toLowerCase();
+  const bubble = document.createElement("div");
+  bubble.className = "smsBubble " + (dir === "incoming" ? "them" : "me");
 
+  // 1) If there's an attachment, show preview + download link
+  if (m.attachment_url) {
+    const url = m.attachment_url;
+    const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+
+    if (isImage) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.style.maxWidth = "220px";
+      img.style.borderRadius = "8px";
+      img.style.display = "block";
+      img.style.marginBottom = "4px";
+      bubble.appendChild(img);
+    }
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.innerText = isImage ? "View / Download image" : "Download attachment";
+    link.style.fontSize = "11px";
+    link.style.textDecoration = "underline";
+    link.style.display = "inline-block";
+    link.style.marginBottom = "4px";
+    bubble.appendChild(link);
+  }
+
+  // 2) Text body (if any)
+  if (m.body && m.body.trim()) {
     const body = document.createElement("div");
-    body.innerText = m.body || "";
-
-    const time = document.createElement("div");
-    time.className = "smsBubbleTime";
-    time.innerText = smsTimestamp(m);
-
+    body.innerText = m.body;
     bubble.appendChild(body);
-    bubble.appendChild(time);
-    container.appendChild(bubble);
-  });
+  }
+
+  // 3) Time
+  const time = document.createElement("div");
+  time.className = "smsBubbleTime";
+  time.innerText = smsTimestamp(m);
+  bubble.appendChild(time);
+
+  container.appendChild(bubble);
+});
+
 
   // Scroll to bottom so latest message is visible
   container.scrollTop = container.scrollHeight;
