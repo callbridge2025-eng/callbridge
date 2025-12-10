@@ -815,23 +815,38 @@ def sms_logs():
         items = []
         for r in rows:
             row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
-            if is_admin or row_email == auth_email:
-                items.append({
-                    "created_at": r.get("Timestamp") or r.get("timestamp"),
-                    "direction": r.get("Direction") or r.get("direction"),
-                    "from_number": r.get("From") or r.get("from"),
-                    "to_number": r.get("To") or r.get("to"),
-                    "body": r.get("Body") or r.get("body"),
-                    "status": r.get("Status") or r.get("status"),
-                    "sid": r.get("SID") or r.get("sid"),
-                    "attachment_url": r.get("AttachmentUrl") or r.get("attachment_url") or ""
-                })
+            if not (is_admin or row_email == auth_email):
+                continue
+
+            raw_attachment = r.get("AttachmentUrl") or r.get("attachment_url") or ""
+            attachment_url = (raw_attachment or "").strip()
+
+            # 🔴 If it's a Twilio API media URL, wrap it with our proxy
+            if attachment_url.startswith("http://api.twilio.com") or attachment_url.startswith("https://api.twilio.com"):
+                # build: https://callbridge.onrender.com/sms-twilio-media?url=<encoded>
+                proxied = _https_url(
+                    f"{request.url_root.rstrip('/')}/sms-twilio-media?url={urllib.parse.quote_plus(attachment_url)}",
+                    request,
+                )
+                attachment_url = proxied
+
+            items.append({
+                "created_at": r.get("Timestamp") or r.get("timestamp"),
+                "direction": r.get("Direction") or r.get("direction"),
+                "from_number": r.get("From") or r.get("from"),
+                "to_number": r.get("To") or r.get("to"),
+                "body": r.get("Body") or r.get("body"),
+                "status": r.get("Status") or r.get("status"),
+                "sid": r.get("SID") or r.get("sid"),
+                "attachment_url": attachment_url,   # <-- always safe URL now
+            })
 
         items = list(reversed(items))
         return jsonify(items), 200
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 
@@ -1118,6 +1133,43 @@ def debug_sms_files():
         "UPLOAD_FOLDER": UPLOAD_FOLDER,
         "files": files,
     })
+
+
+
+@app.route("/sms-twilio-media", methods=["GET"])
+def sms_twilio_media():
+    """
+    Proxy for Twilio-hosted SMS/MMS media.
+
+    Frontend will call:
+      /sms-twilio-media?url=<Twilio MediaUrl>
+    and the server will fetch from Twilio using auth and stream it
+    back to the browser. No Twilio login prompt for the user.
+    """
+    try:
+        media_url = request.args.get("url", "").strip()
+        if not media_url:
+            return "Missing 'url' query param", 400
+
+        if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN):
+            return "Twilio credentials missing", 500
+
+        # Fetch from Twilio with HTTP basic auth
+        r = requests.get(media_url, auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN), stream=True)
+        if r.status_code != 200:
+            print("sms_tl_media error:", r.status_code, media_url)
+            return f"Error from Twilio: {r.status_code}", 502
+
+        content_type = r.headers.get("Content-Type", "application/octet-stream")
+
+        # Stream back to the client
+        return Response(r.iter_content(chunk_size=4096), content_type=content_type)
+
+    except Exception as e:
+        print("sms_tl_media exception:", e, traceback.format_exc())
+        return "Server error", 500
+
+
 
 
 
