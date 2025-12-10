@@ -355,15 +355,49 @@
     <div id="smsThreadMessages" class="threadMessages"></div>
 
   <div class="threadComposer">
-    <div class="muted" style="font-size:12px">To</div>
-    <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
-    <textarea id="smsBody" rows="2" placeholder="Type your message..."></textarea>
+  <div class="muted" style="font-size:12px">To</div>
+  <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
 
-    <button id="sendSmsBtn" class="btn call" type="button">Send</button>
+  <textarea
+    id="smsBody"
+    rows="2"
+    placeholder="Type your message..."
+  ></textarea>
 
-    <div id="smsError" class="muted" style="color:var(--danger);display:none"></div>
-    <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
+  <!-- Attach row -->
+  <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+    <input
+      id="smsFileInput"
+      type="file"
+      multiple
+      style="display:none"
+      accept="image/*,application/pdf"
+    />
+    <button
+      id="smsAttachBtn"
+      class="btn gray"
+      type="button"
+      style="padding:6px 10px;font-size:12px"
+    >
+      📎 Attach
+    </button>
+    <span
+      id="smsAttachedLabel"
+      class="muted"
+      style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+    >
+      No file selected
+    </span>
   </div>
+
+  <button id="sendSmsBtn" class="btn call" type="button" style="margin-top:6px">
+    Send
+  </button>
+
+  <div id="smsError" class="muted" style="color:var(--danger);display:none"></div>
+  <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
+</div>
+
 
 </div> <!-- end smsChatPane -->
 
@@ -1491,6 +1525,22 @@ $("smsNewChatBtn").addEventListener("click", handleNewChat);
 $("sendSmsBtn").addEventListener("click", sendSms);
 $("refreshSmsBtn").addEventListener("click", refreshSms);
 $("smsBackBtn").addEventListener("click", closeSmsChat);
+$("smsAttachBtn").addEventListener("click", () => {
+  $("smsFileInput").click();
+});
+
+$("smsFileInput").addEventListener("change", () => {
+  const files = $("smsFileInput").files;
+  if (!files || !files.length) {
+    $("smsAttachedLabel").innerText = "No file selected";
+    return;
+  }
+  if (files.length === 1) {
+    $("smsAttachedLabel").innerText = files[0].name;
+  } else {
+    $("smsAttachedLabel").innerText = `${files.length} files selected`;
+  }
+});
 
 
 // Tabs (SMS / Voicemails / Profile)
