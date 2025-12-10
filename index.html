@@ -297,7 +297,7 @@
       <div class="smsLayout">
 
   <!-- LEFT: conversation list -->
-  <div class="smsThreads">
+  <div id="smsThreadsPane" class="smsThreads">
   <!-- Top row: title + New Message + refresh -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
     <span class="muted" style="font-size:12px">Conversations</span>
@@ -345,7 +345,7 @@
     <div id="smsThreadHeader" class="threadHeader muted"></div>
   </div>
 
-  <div id="smsThreadMessages" class="threadMessages"></div>
+    <div id="smsThreadMessages" class="threadMessages"></div>
 
   <div class="threadComposer">
     <div class="muted" style="font-size:12px">To</div>
@@ -358,10 +358,11 @@
     <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
   </div>
 
-</div>
+</div> <!-- end smsChatPane -->
 
+</div> <!-- end smsLayout -->
 
-
+</div> <!-- end smsTab -->
 
 
     <!-- VOICEMAILS TAB -->
