@@ -713,15 +713,29 @@ def send_sms():
 
         data = request.get_json(force=True) or {}
         to_raw = data.get("to")
-        body = data.get("body")
+        body = (data.get("body") or "").strip()
+
+        # OPTIONAL: media URL(s) coming from frontend
+        # supports: mediaUrl, media_url, mediaUrls, media_urls
+        media_urls = []
+
+        single_media = data.get("mediaUrl") or data.get("media_url")
+        if single_media:
+            media_urls.append(single_media)
+
+        multiple_media = data.get("mediaUrls") or data.get("media_urls") or []
+        for u in multiple_media:
+            if u and u not in media_urls:
+                media_urls.append(u)
 
         # who is sending?
         auth_email = auth_from_token(request.headers.get("Authorization", "")) \
                      or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
         user_email = (data.get("user_email") or auth_email or "").strip().lower()
 
-        if not to_raw or not body:
-            return json_cors({"error": "Missing 'to' or 'body'."}, 400)
+        # require: to + (body OR media)
+        if not to_raw or (not body and not media_urls):
+            return json_cors({"error": "Missing 'to' or message content (body/media)."}, 400)
 
         # ---- Resolve user and from-number ----
         user = find_user_by_email(user_email) if user_email else None
@@ -738,24 +752,38 @@ def send_sms():
 
         to_number = to_e164(to_raw)
 
-        # ---- Send SMS via Twilio ----
+        # ---- Send SMS/MMS via Twilio ----
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        msg = client.messages.create(
-            from_=from_number,
-            to=to_number,
-            body=body,
-        )
-        print(f"✅ SMS sent from {from_number} to {to_number}, SID: {msg.sid}")
+
+        create_kwargs = {
+            "from_": from_number,
+            "to": to_number,
+        }
+        if body:
+            create_kwargs["body"] = body
+        if media_urls:
+            # Twilio expects a list of URLs for MMS
+            create_kwargs["media_url"] = media_urls
+
+        msg = client.messages.create(**create_kwargs)
+        print(f"✅ SMS/MMS sent from {from_number} to {to_number}, SID: {msg.sid}")
 
         # ---- Log to Google Sheet (SMSLogs tab) ----
         try:
             ws_sms = sh.worksheet("SMSLogs")
+
+            # store media URLs inside body column so we don't break existing sheet structure
+            log_body = body
+            if media_urls:
+                media_note = "Media: " + ", ".join(media_urls)
+                log_body = (body + "\n\n" + media_note) if body else media_note
+
             ws_sms.append_row([
                 datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 "outgoing",          # Direction
                 from_number,         # From (assigned number or fallback)
                 to_number,           # To
-                body,                # Body
+                log_body,            # Body (+ media info if any)
                 user_email,          # User Email (owner in app)
                 "sent",              # Status
                 msg.sid              # SID
@@ -763,11 +791,17 @@ def send_sms():
         except Exception as e:
             print("⚠️ Failed to write to SMSLogs:", e, traceback.format_exc())
 
-        return json_cors({"status": "ok", "sid": msg.sid}, 200)
+        # Return info to frontend so it knows what was sent
+        return json_cors({
+            "status": "ok",
+            "sid": msg.sid,
+            "media_urls": media_urls,
+        }, 200)
 
     except Exception as e:
         print("❌ Error in /send-sms:", e, traceback.format_exc())
         return json_cors({"error": "Failed to send SMS"}, 500)
+
 
 
 
