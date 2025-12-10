@@ -1217,10 +1217,65 @@ function renderSmsThreadMessages(){
 
     // 1) Text body (if any)
     if (bodyText) {
-      const body = document.createElement("div");
-      body.innerText = bodyText;
-      bubble.appendChild(body);
+      msgs.forEach(m => {
+  const dir = (m.direction || "").toLowerCase();
+  const bubble = document.createElement("div");
+  bubble.className = "smsBubble " + (dir === "incoming" ? "them" : "me");
+
+  // 1) Attachment (if any)
+  const attachmentUrl = m.attachment_url || m.attachmentUrl || "";
+  if (attachmentUrl) {
+    // Simple check: is it an image?
+    const lower = attachmentUrl.toLowerCase();
+    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(lower);
+
+    if (isImage) {
+      const img = document.createElement("img");
+      img.src = attachmentUrl;
+      img.style.maxWidth = "180px";
+      img.style.borderRadius = "8px";
+      img.style.display = "block";
+      img.style.cursor = "pointer";
+      img.addEventListener("click", () => {
+        // open in new tab OR let the browser's download UI handle it
+        window.open(attachmentUrl, "_blank");
+      });
+      bubble.appendChild(img);
+    } else {
+      const btn = document.createElement("button");
+      btn.className = "btn gray";
+      btn.style.padding = "4px 8px";
+      btn.style.fontSize = "11px";
+      btn.type = "button";
+      btn.innerText = "⬇ Download file";
+      btn.addEventListener("click", () => {
+        const a = document.createElement("a");
+        a.href = attachmentUrl;
+        a.download = "";  // browser will download instead of open
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      });
+      bubble.appendChild(btn);
     }
+  }
+
+  // 2) Text body (if any)
+  if (m.body && m.body.trim() !== "") {
+    const bodyDiv = document.createElement("div");
+    bodyDiv.innerText = m.body;
+    bubble.appendChild(bodyDiv);
+  }
+
+  // 3) Time
+  const time = document.createElement("div");
+  time.className = "smsBubbleTime";
+  time.innerText = smsTimestamp(m);
+  bubble.appendChild(time);
+
+  container.appendChild(bubble);
+});
+
 
     // 2) Attachment preview / download (if any)
     if (attachment) {
