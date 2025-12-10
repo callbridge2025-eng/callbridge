@@ -1145,14 +1145,20 @@ function renderSmsThreads(){
     title.className = "threadItemTitle";
     title.innerText = showE164(t.number);
 
-    const snippet = document.createElement("div");
-snippet.className = "threadItemSnippet";
+        const snippet = document.createElement("div");
+    snippet.className = "threadItemSnippet";
 
-let snippetText = (t.lastMsg.body || "").trim();
-if (!snippetText && t.lastMsg.attachment_url) {
-  snippetText = "[Attachment]";
-}
-snippet.innerText = snippetText.slice(0, 60) || "—";
+    const lastBody = (t.lastMsg.body || "").trim();
+    const lastAttachment = t.lastMsg.attachment_url || t.lastMsg.attachmentUrl || "";
+
+    if (lastBody) {
+      snippet.innerText = lastBody.slice(0, 60);
+    } else if (lastAttachment) {
+      snippet.innerText = "📎 Attachment";
+    } else {
+      snippet.innerText = "—";
+    }
+
 
 
     div.appendChild(title);
@@ -1168,7 +1174,6 @@ snippet.innerText = snippetText.slice(0, 60) || "—";
 }
 
 // Render right-side chat messages for selected thread
-// Render right-side chat messages for selected thread
 function renderSmsThreadMessages(){
   const container = $("smsThreadMessages");
   const header = $("smsThreadHeader");
@@ -1178,7 +1183,8 @@ function renderSmsThreadMessages(){
 
   if (!currentThreadNumber){
     header.innerText = "No chat selected";
-    container.innerHTML = '<div class="muted" style="font-size:12px">Select a conversation on the left, or start a new message below.</div>';
+    container.innerHTML =
+      '<div class="muted" style="font-size:12px">Select a conversation on the left, or start a new message below.</div>';
     return;
   }
 
@@ -1187,70 +1193,98 @@ function renderSmsThreadMessages(){
   // Filter logs for this conversation
   let msgs = smsLogs.filter(m => smsOtherParty(m) === currentThreadNumber);
 
-  // 🔽 IMPORTANT: sort by time ASC so oldest is on top, newest at bottom
+  // Sort by time ASC so oldest is on top, newest at bottom
   msgs.sort((a, b) => {
     const ta = new Date(a.created_at || a.timestamp || 0).getTime();
     const tb = new Date(b.created_at || b.timestamp || 0).getTime();
-    return ta - tb; // older first
+    return ta - tb;
   });
 
   if (msgs.length === 0){
-    container.innerHTML = '<div class="muted" style="font-size:12px">No messages yet in this conversation.</div>';
+    container.innerHTML =
+      '<div class="muted" style="font-size:12px">No messages yet in this conversation.</div>';
     return;
   }
 
   msgs.forEach(m => {
-  const dir = (m.direction || "").toLowerCase();
-  const bubble = document.createElement("div");
-  bubble.className = "smsBubble " + (dir === "incoming" ? "them" : "me");
+    const dir = (m.direction || "").toLowerCase();
+    const bubble = document.createElement("div");
+    bubble.className = "smsBubble " + (dir === "incoming" ? "them" : "me");
 
-  // 1) If there's an attachment, show preview + download link
-  if (m.attachment_url) {
-    const url = m.attachment_url;
-    const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+    const bodyText = (m.body || "").trim();
+    const attachment =
+      m.attachment_url || m.attachmentUrl || "";   // 🔹 from backend
 
-    if (isImage) {
-      const img = document.createElement("img");
-      img.src = url;
-      img.style.maxWidth = "220px";
-      img.style.borderRadius = "8px";
-      img.style.display = "block";
-      img.style.marginBottom = "4px";
-      bubble.appendChild(img);
+    // 1) Text body (if any)
+    if (bodyText) {
+      const body = document.createElement("div");
+      body.innerText = bodyText;
+      bubble.appendChild(body);
     }
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.target = "_blank";
-    link.rel = "noopener";
-    link.innerText = isImage ? "View / Download image" : "Download attachment";
-    link.style.fontSize = "11px";
-    link.style.textDecoration = "underline";
-    link.style.display = "inline-block";
-    link.style.marginBottom = "4px";
-    bubble.appendChild(link);
-  }
+    // 2) Attachment preview / download (if any)
+    if (attachment) {
+      const attWrap = document.createElement("div");
+      attWrap.style.marginTop = "4px";
 
-  // 2) Text body (if any)
-  if (m.body && m.body.trim()) {
-    const body = document.createElement("div");
-    body.innerText = m.body;
-    bubble.appendChild(body);
-  }
+      // Simple check: looks like an image?
+      const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(
+        attachment.split("?")[0] || ""
+      );
 
-  // 3) Time
-  const time = document.createElement("div");
-  time.className = "smsBubbleTime";
-  time.innerText = smsTimestamp(m);
-  bubble.appendChild(time);
+      // Helper to trigger download without showing URL
+      const triggerDownload = () => {
+        const a = document.createElement("a");
+        a.href = attachment;
+        // filename from URL last segment
+        a.download = (attachment.split("/").pop() || "file").split("?")[0];
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
 
-  container.appendChild(bubble);
-});
+      if (isImage) {
+        // Image preview + click to download
+        const img = document.createElement("img");
+        img.src = attachment;
+        img.style.maxWidth = "160px";
+        img.style.borderRadius = "8px";
+        img.style.display = "block";
+        img.style.cursor = "pointer";
 
+        img.addEventListener("click", triggerDownload);
+
+        attWrap.appendChild(img);
+      } else {
+        // Generic file: show a small button
+        const fileBtn = document.createElement("button");
+        fileBtn.type = "button";
+        fileBtn.className = "btn gray";
+        fileBtn.style.padding = "6px 10px";
+        fileBtn.style.fontSize = "11px";
+        fileBtn.innerText = "⬇ Download file";
+
+        fileBtn.addEventListener("click", triggerDownload);
+
+        attWrap.appendChild(fileBtn);
+      }
+
+      bubble.appendChild(attWrap);
+    }
+
+    // 3) Timestamp (always)
+    const time = document.createElement("div");
+    time.className = "smsBubbleTime";
+    time.innerText = smsTimestamp(m);
+    bubble.appendChild(time);
+
+    container.appendChild(bubble);
+  });
 
   // Scroll to bottom so latest message is visible
   container.scrollTop = container.scrollHeight;
 }
+
 
 // Fetch logs and refresh UI
 async function refreshSms(){
