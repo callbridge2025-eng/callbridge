@@ -839,15 +839,16 @@ def sms_logs():
 @app.route("/sms-webhook", methods=["POST"])
 def sms_webhook():
     """
-    Twilio inbound SMS + MMS handler.
-    Saves text OR media into SMSLogs properly.
+    Twilio will POST here for inbound SMS / MMS.
+    We support text-only, media-only, or both.
     """
     try:
         from_raw = request.values.get("From") or ""
-        to_raw   = request.values.get("To") or ""
+        to_raw   = request.values.get("To") or request.values.get("ToNumber") or ""
         body     = request.values.get("Body") or ""
+        num_media = int(request.values.get("NumMedia") or "0")
 
-        from_e164 = to_e164(from_raw)
+        from_e164   = to_e164(from_raw)
         to_e164_num = to_e164(to_raw)
 
         user = find_user_by_assigned_number(to_e164_num)
@@ -855,40 +856,74 @@ def sms_webhook():
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # ----- Handle MMS -----
-        num_media = int(request.values.get("NumMedia", 0))
         attachment_url = ""
 
+        # If Twilio sent media, download the first one and host it on our own /sms-file
         if num_media > 0:
-            # Twilio gives MediaUrl0, MediaUrl1, ...
-            attachment_url = request.values.get("MediaUrl0") or ""
+            media_url_0 = request.values.get("MediaUrl0") or ""
+            if media_url_0:
+                try:
+                    # Download from Twilio
+                    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+                    auth_token  = os.environ.get("TWILIO_AUTH_TOKEN")
 
-            # Convert Twilio URL to YOUR proxy endpoint
-            # Example: /mms/MEabcd1234
-            media_sid = attachment_url.rstrip("/").split("/")[-1]
-            attachment_url = f"{request.url_root.rstrip('/')}/mms/{media_sid}"
+                    r = requests.get(media_url_0, auth=(account_sid, auth_token), stream=True)
+                    r.raise_for_status()
 
+                    # Guess extension from content-type
+                    content_type = r.headers.get("Content-Type", "")
+                    ext = ".bin"
+                    if "jpeg" in content_type:
+                        ext = ".jpeg"
+                    elif "jpg" in content_type:
+                        ext = ".jpg"
+                    elif "png" in content_type:
+                        ext = ".png"
+                    elif "gif" in content_type:
+                        ext = ".gif"
+                    elif "webp" in content_type:
+                        ext = ".webp"
+
+                    unique_name = f"{int(time.time())}_{secrets.token_hex(4)}{ext}"
+                    save_path   = os.path.join(UPLOAD_FOLDER, unique_name)
+
+                    with open(save_path, "wb") as f:
+                        for chunk in r.iter_content(4096):
+                            f.write(chunk)
+
+                    # Host it via our own /sms-file/<name> endpoint
+                    attachment_url = _https_url(
+                        f"{request.url_root.rstrip('/')}/sms-file/{unique_name}",
+                        request
+                    )
+                except Exception as e:
+                    print("⚠️ Failed to download inbound MMS media:", e, traceback.format_exc())
+                    attachment_url = ""
+
+        # Append full row: Timestamp | Direction | From | To | Body | User Email | Status | SID | AttachmentUrl
         append_row_raw(
             sms_ws,
             [
                 timestamp,
-                "incoming",
-                from_e164,
-                to_e164_num,
+                "incoming",      # Direction
+                from_e164,       # From
+                to_e164_num,     # To
                 body,
                 user_email,
-                "received",
-                "",              # SID for inbound not needed
-                attachment_url   # <---- IMPORTANT!
+                "received",      # Status
+                "",              # SID (not strictly needed for inbound)
+                attachment_url   # AttachmentUrl (empty if no media)
             ]
         )
 
-        print(f"[SMS INBOUND] from={from_e164} to={to_e164_num} media={attachment_url}")
+        print(f"[SMS INBOUND] from={from_e164} to={to_e164_num} user={user_email} media={bool(attachment_url)}")
 
     except Exception as e:
-        print("sms-webhook error:", e)
+        print("sms-webhook error:", e, traceback.format_exc())
 
+    # No auto-reply, Twilio just needs 200/204
     return ("", 204)
+
 
 
 @app.route("/mms/<media_sid>", methods=["GET"])
@@ -1098,6 +1133,17 @@ def sms_file(filename):
         print("sms_file error:", e, traceback.format_exc())
         return "Not found", 404
 
+
+@app.route("/_debug-sms-files", methods=["GET"])
+def debug_sms_files():
+    try:
+        files = os.listdir(UPLOAD_FOLDER)
+    except Exception as e:
+        files = [f"ERROR: {e}"]
+    return json_cors({
+        "UPLOAD_FOLDER": UPLOAD_FOLDER,
+        "files": files,
+    })
 
 
 
