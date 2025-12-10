@@ -690,7 +690,7 @@ TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_SMS_FROM    = os.environ.get("TWILIO_SMS_FROM")  # your sending number
 # Where to store uploaded SMS attachments
-UPLOAD_FOLDER = os.environ.get("SMS_UPLOAD_FOLDER", "/tmp/sms_uploads")
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "sms_uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
@@ -839,13 +839,13 @@ def sms_logs():
 @app.route("/sms-webhook", methods=["POST"])
 def sms_webhook():
     """
-    Twilio will POST here for inbound SMS.
-    Set this as the Messaging webhook URL for your Twilio number.
+    Twilio inbound SMS + MMS handler.
+    Saves text OR media into SMSLogs properly.
     """
     try:
         from_raw = request.values.get("From") or ""
-        to_raw = request.values.get("To") or request.values.get("ToNumber") or ""
-        body = request.values.get("Body") or ""
+        to_raw   = request.values.get("To") or ""
+        body     = request.values.get("Body") or ""
 
         from_e164 = to_e164(from_raw)
         to_e164_num = to_e164(to_raw)
@@ -855,17 +855,68 @@ def sms_webhook():
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
+        # ----- Handle MMS -----
+        num_media = int(request.values.get("NumMedia", 0))
+        attachment_url = ""
+
+        if num_media > 0:
+            # Twilio gives MediaUrl0, MediaUrl1, ...
+            attachment_url = request.values.get("MediaUrl0") or ""
+
+            # Convert Twilio URL to YOUR proxy endpoint
+            # Example: /mms/MEabcd1234
+            media_sid = attachment_url.rstrip("/").split("/")[-1]
+            attachment_url = f"{request.url_root.rstrip('/')}/mms/{media_sid}"
+
         append_row_raw(
             sms_ws,
-            [timestamp, "incoming", from_e164, to_e164_num, body, user_email, "received", ""]
+            [
+                timestamp,
+                "incoming",
+                from_e164,
+                to_e164_num,
+                body,
+                user_email,
+                "received",
+                "",              # SID for inbound not needed
+                attachment_url   # <---- IMPORTANT!
+            ]
         )
 
-        print(f"[SMS INBOUND] from={from_e164} to={to_e164_num} user={user_email}")
+        print(f"[SMS INBOUND] from={from_e164} to={to_e164_num} media={attachment_url}")
+
     except Exception as e:
         print("sms-webhook error:", e)
 
-    # We don't auto-reply, just 204 OK
     return ("", 204)
+
+
+@app.route("/mms/<media_sid>", methods=["GET"])
+def mms_proxy(media_sid):
+    """
+    Serve Twilio MMS media publicly by proxying it with auth.
+    """
+    try:
+        account_sid = TWILIO_ACCOUNT_SID
+        auth_token  = TWILIO_AUTH_TOKEN
+
+        twilio_url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages/Media/{media_sid}"
+
+        r = requests.get(twilio_url, auth=(account_sid, auth_token), stream=True)
+        if r.status_code != 200:
+            return "Media not found", 404
+
+        content_type = r.headers.get("Content-Type", "application/octet-stream")
+
+        return Response(
+            r.iter_content(chunk_size=4096),
+            content_type=content_type
+        )
+
+    except Exception as e:
+        print("mms_proxy error:", e)
+        return "Error", 500
+
 
 
 @app.route("/voicemails", methods=["GET", "OPTIONS"])
