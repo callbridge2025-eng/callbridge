@@ -813,20 +813,23 @@ def sms_logs():
         for r in rows:
             row_email = (r.get("User Email") or r.get("user_email") or "").strip().lower()
             if is_admin or row_email == auth_email:
-                items.append({
-    "created_at": r.get("Timestamp") or r.get("timestamp"),
-    "direction": r.get("Direction") or r.get("direction"),
-    "from_number": r.get("From") or r.get("from"),
-    "to_number": r.get("To") or r.get("to"),
-    "body": r.get("Body") or r.get("body"),
-    "status": r.get("Status") or r.get("status"),
-    "sid": r.get("SID") or r.get("sid"),
-    "attachment_url": (
-        r.get("AttachmentUrl") or
-        r.get("attachment_url") or
-        ""
-    )
-})
+                            items.append({
+                "created_at": r.get("Timestamp") or r.get("timestamp"),
+                "direction": r.get("Direction") or r.get("direction"),
+                "from_number": r.get("From") or r.get("from"),
+                "to_number": r.get("To") or r.get("to"),
+                "body": r.get("Body") or r.get("body"),
+                "status": r.get("Status") or r.get("status"),
+                "sid": r.get("SID") or r.get("sid"),
+                # 🔹 New: attachment URL from Google Sheet
+                "attachment_url": (
+                    r.get("AttachmentUrl")
+                    or r.get("Attachment URL")
+                    or r.get("attachment_url")
+                    or ""
+                ),
+            })
+
 
         items = list(reversed(items))
         return jsonify(items), 200
