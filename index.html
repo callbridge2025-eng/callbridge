@@ -97,158 +97,105 @@
   }
 }
 
-    /* --- SMS chat layout (WhatsApp-style) --- */
-.sms-layout{
+/* --- Chat-style SMS UI --- */
+.smsLayout{
   display:flex;
-  flex-direction:row;
-  gap:10px;
-  height:calc(100% - 40px);
-  min-height:0;
+  gap:12px;
+  margin-top:10px;
+  align-items:stretch;
 }
 
-.sms-threads{
-  width:32%;
-  min-width:180px;
-  display:flex;
-  flex-direction:column;
+.smsThreads{
+  width:38%;
+  min-width:150px;
   border-right:1px solid #e5e7eb;
   padding-right:8px;
+  max-height:360px;
+  overflow-y:auto;
 }
 
-.sms-threads-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:6px;
-}
-
-.sms-thread-list{
+.smsThreadPane{
   flex:1;
-  overflow:auto;
-  margin-top:8px;
   display:flex;
   flex-direction:column;
-  gap:6px;
+  max-height:360px;
 }
 
-.sms-thread-item{
-  padding:8px 10px;
+#smsThreadHeader{
+  font-size:13px;
+  font-weight:600;
+  padding-bottom:4px;
+  border-bottom:1px solid #e5e7eb;
+}
+
+.threadMessages{
+  flex:1;
+  overflow-y:auto;
+  padding:8px 4px;
+  background:#f9fafb;
   border-radius:10px;
-  cursor:pointer;
-  display:flex;
-  flex-direction:column;
-  gap:2px;
+  margin-top:8px;
 }
-.sms-thread-item:hover{
-  background:#f3f4ff;
+
+.smsBubble{
+  max-width:80%;
+  padding:6px 9px;
+  border-radius:10px;
+  margin-bottom:6px;
+  font-size:13px;
+  line-height:1.3;
 }
-.sms-thread-item.active{
+
+.smsBubble.me{
+  margin-left:auto;
   background:var(--accent);
   color:#fff;
+  border-bottom-right-radius:3px;
 }
-.sms-thread-item .peer{
+
+.smsBubble.them{
+  margin-right:auto;
+  background:#e5e7eb;
+  border-bottom-left-radius:3px;
+}
+
+.smsBubbleTime{
+  font-size:10px;
+  opacity:0.7;
+  margin-top:2px;
+}
+
+.threadsList .threadItem{
+  padding:7px 6px;
+  border-radius:8px;
+  margin-bottom:4px;
+  cursor:pointer;
+}
+
+.threadItem.active{
+  background:#e5edff;
+}
+
+.threadItemTitle{
+  font-size:13px;
   font-weight:600;
-  font-size:14px;
 }
-.sms-thread-item .snippet{
+
+.threadItemSnippet{
   font-size:12px;
-  opacity:0.9;
+  color:var(--muted);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.sms-thread-item .time{
-  font-size:11px;
-  opacity:0.8;
-  align-self:flex-end;
-}
 
-.sms-thread-view{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-  min-width:0;
-}
-
-.sms-thread-header{
-  padding-bottom:8px;
-  border-bottom:1px solid #e5e7eb;
-  margin-bottom:8px;
-}
-
-.sms-messages{
-  flex:1;
-  overflow:auto;
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-  padding-right:4px;
-}
-
-/* message bubbles */
-.sms-msg-row{
-  display:flex;
-}
-.sms-msg-row.me{
-  justify-content:flex-end;
-}
-.sms-msg-row.them{
-  justify-content:flex-start;
-}
-
-.sms-msg{
-  max-width:70%;
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-}
-.sms-bubble{
-  padding:8px 10px;
-  border-radius:14px;
-  font-size:13px;
-  line-height:1.35;
-  word-wrap:break-word;
-  white-space:pre-wrap;
-}
-.sms-msg-row.me .sms-bubble{
-  background:var(--accent);
-  color:#fff;
-  border-bottom-right-radius:4px;
-}
-.sms-msg-row.them .sms-bubble{
-  background:#f3f4ff;
-  border-bottom-left-radius:4px;
-}
-.sms-msg-time{
-  font-size:11px;
-  color:var(--muted);
-}
-
-.sms-input-bar{
-  display:flex;
-  gap:8px;
-  align-items:flex-end;
+.threadComposer{
   margin-top:8px;
-  border-top:1px solid #e5e7eb;
-  padding-top:8px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
 }
-.sms-input-bar input{
-  width:140px;
-  padding:8px;
-  border-radius:8px;
-  border:1px solid #e6e9ef;
-  font-size:13px;
-}
-.sms-input-bar textarea{
-  flex:1;
-  resize:none;
-  min-height:42px;
-  max-height:80px;
-  padding:8px;
-  border-radius:8px;
-  border:1px solid #e6e9ef;
-  font-size:13px;
-}
+
 
 
 
@@ -343,43 +290,61 @@
         <!-- SMS TAB -->
     <div id="smsTab">
       <h2>SMS</h2>
+      <div class="muted" style="font-size:13px;margin-top:4px">
+        Tap a conversation on the left or start a new chat below.
+      </div>
 
-      <div id="smsChatLayout" class="sms-layout" style="margin-top:10px">
-        <!-- Left: conversation list -->
-        <div class="sms-threads">
-          <div class="sms-threads-header">
-            <span class="muted">Conversations</span>
-            <div style="display:flex;gap:6px">
-              <button id="smsNewChatBtn" class="btn gray" type="button" style="padding:4px 8px;font-size:12px">New</button>
-              <button id="refreshSmsBtn" class="btn gray" type="button" style="padding:4px 8px;font-size:12px">Refresh</button>
-            </div>
+      <div class="smsLayout">
+        <!-- LEFT: conversation list -->
+        <div class="smsThreads">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span class="muted" style="font-size:12px">Conversations</span>
+            <button id="refreshSmsBtn" class="btn gray" style="padding:4px 8px;font-size:11px" type="button">⟳</button>
           </div>
-          <div id="smsThreadList" class="sms-thread-list">
-            <div class="muted">Loading messages...</div>
+          <div id="smsThreadsList" class="threadsList">
+            <div class="muted" style="font-size:12px">No messages yet</div>
           </div>
         </div>
 
-        <!-- Right: active thread view -->
-        <div class="sms-thread-view">
-          <div class="sms-thread-header">
-            <div id="smsThreadTitle" style="font-weight:600;color:#111827;font-size:14px">Select a conversation</div>
-            <div class="muted" style="font-size:12px">Messages appear here</div>
+        <!-- RIGHT: chat view + composer -->
+        <div class="smsThreadPane">
+          <div id="smsThreadHeader" class="threadHeader muted">
+            No chat selected
           </div>
 
-          <div id="smsMessages" class="sms-messages">
-            <div class="muted">No conversation selected</div>
+          <div id="smsThreadMessages" class="threadMessages">
+            <div class="muted" style="font-size:12px">
+              Select a conversation on the left, or start a new message below.
+            </div>
           </div>
 
-          <div class="sms-input-bar">
-            <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
-            <textarea id="smsBody" placeholder="Type your message..."></textarea>
-            <button id="sendSmsBtn" class="btn call" type="button">Send</button>
+          <div class="threadComposer">
+            <div class="muted" style="font-size:12px">To</div>
+            <input
+              id="smsTo"
+              type="tel"
+              inputmode="tel"
+              placeholder="+1..."
+              style="width:100%;padding:8px;border-radius:8px;border:1px solid #e6e9ef"
+            />
+            <textarea
+              id="smsBody"
+              rows="2"
+              placeholder="Type your message..."
+              style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;resize:vertical"
+            ></textarea>
+            <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+              <button id="sendSmsBtn" class="btn call" style="flex:0 0 auto" type="button">Send</button>
+              <div style="flex:1">
+                <div id="smsError" class="muted" style="color:var(--danger);margin-top:2px;display:none"></div>
+                <div id="smsSuccess" class="muted" style="color:var(--green);margin-top:2px;display:none"></div>
+              </div>
+            </div>
           </div>
-          <div id="smsError" class="muted" style="color:var(--danger);margin-top:6px;display:none"></div>
-          <div id="smsSuccess" class="muted" style="color:var(--green);margin-top:6px;display:none"></div>
         </div>
       </div>
     </div>
+
 
 
     <!-- VOICEMAILS TAB -->
@@ -537,9 +502,9 @@ let timerInterval = null;
 let wfRaf = null;
 let historyPollInterval = null;
 let localStream = null;
-let smsAll = [];
-let smsThreads = {};
-let currentSmsPeerKey = null; // display label (showE164) used as key
+  // SMS chat state
+let smsLogs = [];
+let currentThreadNumber = "";
 
 
 /* auth helpers */
@@ -1081,21 +1046,167 @@ function renderHistoryItems(items){
 }
 
 /* ---------- SMS ---------- */
+/* ---------- SMS (chat-style) ---------- */
+
+// Helper: figure out the "other party" number for a log row
+function smsOtherParty(m){
+  const dir = (m.direction || "").toLowerCase();
+  if (dir === "incoming") {
+    return m.from_number || m.from || "";
+  } else {
+    return m.to_number || m.to || m.from_number || "";
+  }
+}
+
+function smsTimestamp(m){
+  const raw = m.created_at || m.timestamp || "";
+  const d = raw ? new Date(raw) : new Date();
+  return d.toLocaleString();
+}
+
+// Render left-side conversation list
+function renderSmsThreads(){
+  const container = $("smsThreadsList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(smsLogs) || smsLogs.length === 0){
+    container.innerHTML = '<div class="muted" style="font-size:12px">No messages yet</div>';
+    return;
+  }
+
+  // Build a map: otherNumber -> last message
+  const threadsMap = new Map();
+  // Iterate oldest -> newest so the last one wins
+  smsLogs.forEach(m => {
+    const other = smsOtherParty(m);
+    if (!other) return;
+    threadsMap.set(other, m); // last message for that number
+  });
+
+  const threads = Array.from(threadsMap.entries()).map(([number, lastMsg]) => ({
+    number,
+    lastMsg
+  }));
+
+  // Sort newest first
+  threads.sort((a,b) => {
+    const ta = new Date(a.lastMsg.created_at || a.lastMsg.timestamp || 0).getTime();
+    const tb = new Date(b.lastMsg.created_at || b.lastMsg.timestamp || 0).getTime();
+    return tb - ta;
+  });
+
+  threads.forEach(t => {
+    const div = document.createElement("div");
+    div.className = "threadItem";
+    if (currentThreadNumber && t.number === currentThreadNumber){
+      div.classList.add("active");
+    }
+
+    const title = document.createElement("div");
+    title.className = "threadItemTitle";
+    title.innerText = showE164(t.number);
+
+    const snippet = document.createElement("div");
+    snippet.className = "threadItemSnippet";
+    snippet.innerText = (t.lastMsg.body || "").slice(0, 60) || "—";
+
+    div.appendChild(title);
+    div.appendChild(snippet);
+
+    div.addEventListener("click", () => {
+      currentThreadNumber = t.number;
+      $("smsTo").value = t.number;           // fill To with this number
+      renderSmsThreads();                    // re-highlight
+      renderSmsThreadMessages();             // show messages
+    });
+
+    container.appendChild(div);
+  });
+}
+
+// Render right-side chat messages for selected thread
+function renderSmsThreadMessages(){
+  const container = $("smsThreadMessages");
+  const header = $("smsThreadHeader");
+  if (!container || !header) return;
+
+  container.innerHTML = "";
+
+  if (!currentThreadNumber){
+    header.innerText = "No chat selected";
+    container.innerHTML = '<div class="muted" style="font-size:12px">Select a conversation on the left, or start a new message below.</div>';
+    return;
+  }
+
+  header.innerText = showE164(currentThreadNumber);
+
+  // Filter logs for this conversation
+  const msgs = smsLogs.filter(m => smsOtherParty(m) === currentThreadNumber);
+  if (msgs.length === 0){
+    container.innerHTML = '<div class="muted" style="font-size:12px">No messages yet in this conversation.</div>';
+    return;
+  }
+
+  msgs.forEach(m => {
+    const dir = (m.direction || "").toLowerCase();
+    const bubble = document.createElement("div");
+    bubble.className = "smsBubble " + (dir === "incoming" ? "them" : "me");
+
+    const body = document.createElement("div");
+    body.innerText = m.body || "";
+
+    const time = document.createElement("div");
+    time.className = "smsBubbleTime";
+    time.innerText = smsTimestamp(m);
+
+    bubble.appendChild(body);
+    bubble.appendChild(time);
+    container.appendChild(bubble);
+  });
+
+  // Scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+// Fetch logs and refresh UI
+async function refreshSms(){
+  try {
+    if (!currentUser) return;
+    const email = currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/sms-logs${email}`, {
+      method: "GET",
+      headers: Object.assign({}, authHeaders())
+    });
+    if (!res.ok){
+      console.warn("sms-logs error", res.status);
+      return;
+    }
+    const data = await res.json();
+    smsLogs = Array.isArray(data) ? data : [];
+
+    // If no current thread, pick the most recent conversation (if any)
+    if (!currentThreadNumber && smsLogs.length){
+      const last = smsLogs[smsLogs.length - 1];
+      currentThreadNumber = smsOtherParty(last);
+      $("smsTo").value = currentThreadNumber || "";
+    }
+
+    renderSmsThreads();
+    renderSmsThreadMessages();
+  } catch (e) {
+    console.error("refreshSms error", e);
+  }
+}
+
 async function sendSms(){
   $("smsError").style.display = "none";
   $("smsSuccess").style.display = "none";
 
-  let to = $("smsTo").value.trim();
+  // If a thread is selected, default to that number
+  const typedTo = $("smsTo").value.trim();
+  const to = typedTo || currentThreadNumber;
   const body = $("smsBody").value.trim();
-
-  // If we are in an open thread but "To" field is empty, use that thread's number
-  if (currentSmsPeerKey && !to) {
-    const thread = smsThreads[currentSmsPeerKey];
-    if (thread && thread.peerRaw) {
-      to = thread.peerRaw;
-      $("smsTo").value = to;
-    }
-  }
 
   if (!to || !body) {
     $("smsError").innerText = "Number and message are required.";
@@ -1104,9 +1215,7 @@ async function sendSms(){
   }
 
   try {
-    const emailQS = currentUser && currentUser.email
-      ? `?email=${encodeURIComponent(currentUser.email)}`
-      : "";
+    const emailQS = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
     const res = await fetch(`${API_BASE}/send-sms${emailQS}`, {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
@@ -1125,10 +1234,9 @@ async function sendSms(){
     $("smsSuccess").style.display = "block";
     $("smsBody").value = "";
 
-    // Ensure we land in that conversation
-    if (!currentSmsPeerKey) {
-      currentSmsPeerKey = showE164(to);
-    }
+    // Make sure this conversation becomes/ stays the active thread
+    currentThreadNumber = to;
+    $("smsTo").value = to;
 
     await refreshSms();
   } catch (e) {
@@ -1138,146 +1246,6 @@ async function sendSms(){
   }
 }
 
-
-function renderSmsThreadsAndMessages(){
-  const listEl = $("smsThreadList");
-  const msgsEl = $("smsMessages");
-  const titleEl = $("smsThreadTitle");
-  if (!listEl || !msgsEl || !titleEl) return;
-
-  // Build threads keyed by normalized/display number
-  smsThreads = {};
-  smsAll.forEach(m => {
-    const dir = (m.direction || "").toLowerCase();
-    let peerRaw = "";
-    if (dir === "incoming") {
-      peerRaw = m.from_number || m.from || "";
-    } else {
-      peerRaw = m.to_number || m.to || m.from_number || "";
-    }
-    peerRaw = (peerRaw || "").trim();
-    if (!peerRaw) return;
-
-    const key = showE164(peerRaw); // use pretty label as the thread key
-    if (!smsThreads[key]) {
-      smsThreads[key] = { peerRaw, items: [] };
-    }
-    smsThreads[key].items.push(m);
-  });
-
-  const keys = Object.keys(smsThreads);
-  listEl.innerHTML = "";
-
-  if (keys.length === 0) {
-    listEl.innerHTML = '<div class="muted">No messages yet</div>';
-    msgsEl.innerHTML = '<div class="muted">No conversation selected</div>';
-    titleEl.innerText = "Select a conversation";
-    currentSmsPeerKey = null;
-    $("smsTo").value = "";
-    return;
-  }
-
-  // sort threads by most recent message time (descending)
-  function lastTime(thread){
-    let max = 0;
-    thread.items.forEach(m => {
-      const t = new Date(m.created_at || Date.now()).getTime() || 0;
-      if (t > max) max = t;
-    });
-    return max;
-  }
-  keys.sort((a,b) => lastTime(smsThreads[b]) - lastTime(smsThreads[a]));
-
-  // ensure we have a current thread
-  if (!currentSmsPeerKey || !smsThreads[currentSmsPeerKey]) {
-    currentSmsPeerKey = keys[0];
-  }
-
-  // render thread list
-  keys.forEach(k => {
-    const thread = smsThreads[k];
-    const sorted = thread.items.slice().sort((a,b) => {
-      return (new Date(a.created_at || 0) - new Date(b.created_at || 0));
-    });
-    const last = sorted[sorted.length - 1];
-
-    const item = document.createElement("div");
-    item.className = "sms-thread-item" + (k === currentSmsPeerKey ? " active" : "");
-    item.setAttribute("data-peer-key", k);
-    item.innerHTML = `
-      <div class="peer">${k}</div>
-      <div class="snippet">${(last.body || "").slice(0, 60)}</div>
-      <div class="time">${last.created_at ? new Date(last.created_at).toLocaleString() : ""}</div>
-    `;
-    item.addEventListener("click", () => {
-      currentSmsPeerKey = k;
-      renderCurrentSmsThread();
-    });
-    listEl.appendChild(item);
-  });
-
-  renderCurrentSmsThread();
-}
-
-function renderCurrentSmsThread(){
-  const msgsEl = $("smsMessages");
-  const titleEl = $("smsThreadTitle");
-  if (!msgsEl || !titleEl) return;
-
-  msgsEl.innerHTML = "";
-
-  const thread = smsThreads[currentSmsPeerKey];
-  if (!thread) {
-    titleEl.innerText = "Select a conversation";
-    msgsEl.innerHTML = '<div class="muted">No conversation selected</div>';
-    return;
-  }
-
-  titleEl.innerText = showE164(thread.peerRaw || currentSmsPeerKey);
-  $("smsTo").value = thread.peerRaw || "";
-
-  const sorted = thread.items.slice().sort((a,b) => {
-    return (new Date(a.created_at || 0) - new Date(b.created_at || 0));
-  });
-
-  sorted.forEach(m => {
-    const dir = (m.direction || "").toLowerCase();
-    const row = document.createElement("div");
-    row.className = "sms-msg-row " + (dir === "incoming" ? "them" : "me");
-
-    const msgWrap = document.createElement("div");
-    msgWrap.className = "sms-msg";
-
-    const bubble = document.createElement("div");
-    bubble.className = "sms-bubble";
-    bubble.innerText = m.body || "";
-
-    const time = document.createElement("div");
-    time.className = "sms-msg-time";
-    time.innerText = m.created_at
-      ? new Date(m.created_at).toLocaleTimeString()
-      : "";
-
-    msgWrap.appendChild(bubble);
-    msgWrap.appendChild(time);
-    row.appendChild(msgWrap);
-    msgsEl.appendChild(row);
-  });
-
-  // Scroll to latest message
-  msgsEl.scrollTop = msgsEl.scrollHeight;
-
-  // Update active highlight in list
-  const listEl = $("smsThreadList");
-  if (listEl) {
-    Array.from(listEl.querySelectorAll(".sms-thread-item")).forEach(el => {
-      el.classList.toggle(
-        "active",
-        el.getAttribute("data-peer-key") === currentSmsPeerKey
-      );
-    });
-  }
-}
 
 
 /* ---------- Voicemails ---------- */
