@@ -564,6 +564,8 @@ let localStream = null;
   // SMS chat state
 let smsLogs = [];
 let currentThreadNumber = "";
+let smsAttachmentUrl = "";   // URL of uploaded file for MMS
+
 
 
 /* auth helpers */
@@ -1267,18 +1269,30 @@ async function sendSms(){
   const to = typedTo || currentThreadNumber;
   const body = $("smsBody").value.trim();
 
-  if (!to || !body) {
-    $("smsError").innerText = "Number and message are required.";
+  // ✅ NEW: allow either text OR attachment
+  const hasAttachment = !!smsAttachmentUrl;
+
+  if (!to || (!body && !hasAttachment)) {
+    $("smsError").innerText = "Number and message (or file) are required.";
     $("smsError").style.display = "block";
     return;
   }
 
   try {
-    const emailQS = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const emailQS = currentUser && currentUser.email
+      ? `?email=${encodeURIComponent(currentUser.email)}`
+      : "";
+
+    const payload = {
+      to,
+      body,                  // can be empty string
+      mediaUrl: smsAttachmentUrl || null  // ✅ send attachment URL if present
+    };
+
     const res = await fetch(`${API_BASE}/send-sms${emailQS}`, {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-      body: JSON.stringify({ to, body })
+      body: JSON.stringify(payload)
     });
 
     const json = await res.json().catch(() => ({}));
@@ -1293,6 +1307,11 @@ async function sendSms(){
     $("smsSuccess").style.display = "block";
     $("smsBody").value = "";
 
+    // if you want to clear the file after sending:
+    smsAttachmentUrl = "";
+    const fileInput = $("smsFile");
+    if (fileInput) fileInput.value = "";
+
     // Make sure this conversation becomes/ stays the active thread
     currentThreadNumber = to;
     $("smsTo").value = to;
@@ -1303,54 +1322,6 @@ async function sendSms(){
     $("smsError").innerText = "Network error";
     $("smsError").style.display = "block";
   }
-}
-
-  function openSmsChat(number = "") {
-  currentThreadNumber = number;
-
-  const layout   = $("smsLayout");
-  const listPane = $("smsThreadsPane");
-  const chatPane = $("smsChatPane");
-
-  // hide list, show chat
-  if (listPane) listPane.style.display = "none";
-  if (chatPane) chatPane.style.display = "flex";
-  if (layout) layout.classList.remove("list-only");
-
-  $("smsTo").value = number || "";
-  $("smsBody").value = "";
-
-  $("smsThreadHeader").innerText = number
-    ? showE164(number)
-    : "New Message";
-
-  renderSmsThreadMessages();
-  renderSmsThreads(); // update highlight if needed
-}
-
-function closeSmsChat() {
-  const layout   = $("smsLayout");
-  const listPane = $("smsThreadsPane");
-  const chatPane = $("smsChatPane");
-
-  if (chatPane) chatPane.style.display = "none";   // hide chat
-  if (listPane) listPane.style.display = "block";  // show conversation list
-  if (layout) layout.classList.add("list-only");   // list goes full width
-
-  $("smsTo").value = "";
-  $("smsBody").value = "";
-  // keep currentThreadNumber so the active thread stays highlighted
-}
-
-function handleNewChat() {
-  currentThreadNumber = "";
-  $("smsTo").value = "";
-  $("smsBody").value = "";
-
-  $("smsThreadMessages").innerHTML =
-    '<div class="muted" style="font-size:12px">Start a new message…</div>';
-
-  openSmsChat("");   // open chat pane in "new message" mode
 }
 
 
