@@ -3,10 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Call Bridge — Business</title>
-  <meta name="description" content="Call Bridge — softphone, virtual numbers (TFN) and unified SMS/voicemail for businesses." />
+  <title>Call Bridge — Softphone & TFN</title>
+  <meta name="description" content="Call Bridge — browser softphone and TFN (toll-free number) services for businesses and contact centers." />
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-
   <style>
     :root{
       --bg: #f6f8fb;
@@ -54,7 +53,7 @@
     }
     .ghostBtn{display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:10px;background:transparent;border:1px solid #eef2ff;color:var(--muted);cursor:pointer}
     .productCard{
-      min-width:220px;max-width:360px;background:linear-gradient(180deg,var(--glass),#ffffff);border-radius:12px;padding:18px;border:1px solid rgba(0,0,0,0.03);
+      min-width:220px;max-width:420px;background:linear-gradient(180deg,var(--glass),#ffffff);border-radius:12px;padding:18px;border:1px solid rgba(0,0,0,0.03);
       box-shadow: 0 6px 20px rgba(2,6,23,0.04);
     }
     .features{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
@@ -84,8 +83,6 @@
       .ctaRow{flex-direction:column;align-items:stretch}
       nav{width:100%;justify-content:flex-end}
     }
-
-    /* subtle helper for links that open softphone in new tab if desired */
     .linkTiny{font-size:13px;color:var(--accent);text-decoration:underline}
   </style>
 </head>
@@ -96,7 +93,7 @@
         <div class="logo">CB</div>
         <div>
           <h1>Call Bridge</h1>
-          <div class="muted" style="font-size:13px;color:var(--muted)">Unified softphone · virtual numbers · SMS & voicemail</div>
+          <div class="muted" style="font-size:13px;color:var(--muted)">Browser telephony & global TFN services</div>
         </div>
       </div>
 
@@ -111,13 +108,13 @@
     <main>
       <section class="hero" aria-labelledby="hero-title">
         <div class="heroContent">
-          <div class="kicker">Trusted for business</div>
-          <h2 id="hero-title">Make calls, manage numbers, and handle messages — all from one place.</h2>
-          <p class="lead">Call Bridge is a lightweight web softphone with virtual telephone numbers (TFN), SMS threading, and voicemail — built for teams and small businesses. No downloads, works in-browser.</p>
+          <div class="kicker">Two products — different audiences</div>
+          <h2 id="hero-title">Softphone for individuals & SMBs — TFN for international contact centers</h2>
+          <p class="lead">Call Bridge provides two dedicated offerings: a browser softphone (fast setup, Twilio-based PSTN calling, SMS/MMS, voicemail) for individuals and small teams — and TFN, a global toll-free-number & routing platform designed for offshore call centers and enterprise international operations.</p>
 
           <div class="ctaRow">
             <a class="primaryBtn" href="/softphone.html" role="button">Open Softphone →</a>
-            <a class="ghostBtn" href="/tfn.html" role="button">Manage TFNs</a>
+            <a class="ghostBtn" href="/tfn.html" role="button">Open TFN Console</a>
           </div>
 
           <div style="margin-top:18px;color:var(--muted);font-size:14px">
@@ -127,45 +124,114 @@
           </div>
         </div>
 
-        <div style="min-width:260px;max-width:380px">
+        <div style="min-width:260px;max-width:420px">
           <div class="productCard">
             <h3 style="margin:0 0 8px 0">Access Products</h3>
-            <p class="muted" style="margin:0 0 12px">Choose a product below to open its interface.</p>
+            <p class="muted" style="margin:0 0 12px">Choose which product you want to open. Each product is tailored to a different audience — read the short descriptions before you proceed.</p>
 
             <div class="accessProducts" id="products">
-              <a href="/softphone.html" class="prodBtn prodSoft">Softphone</a>
-              <a href="/tfn.html" class="prodBtn prodTfn">TFN</a>
+              <a href="/softphone.html" class="prodBtn prodSoft" title="Softphone for Individuals & SMBs">Softphone</a>
+              <a href="/tfn.html" class="prodBtn prodTfn" title="TFN for Call Centers & International Business">TFN</a>
             </div>
 
             <div style="margin-top:12px;font-size:13px;color:var(--muted)">
-              Softphone opens the in-browser calling & SMS UI. TFN opens the virtual-number management page.
+              Softphone = simple setup, direct PSTN calling & messaging. TFN = global toll-free numbers, routing, and extensions for contact centers.
             </div>
           </div>
         </div>
       </section>
 
       <section id="features" class="section">
-        <h3 style="margin:0 0 12px 0">What you get</h3>
+        <h3 style="margin:0 0 12px 0">Products & core features</h3>
         <div class="features">
-          <div class="feature"><strong>Browser softphone</strong><div class="muted" style="margin-top:6px">Make/receive calls using Twilio, DTMF, mute, hold & speaker controls.</div></div>
-          <div class="feature"><strong>Virtual Numbers (TFN)</strong><div class="muted" style="margin-top:6px">Assign and manage telephone numbers for your team.</div></div>
-          <div class="feature"><strong>SMS & MMS</strong><div class="muted" style="margin-top:6px">Threaded conversations, attachments, and delivery statuses.</div></div>
-          <div class="feature"><strong>Voicemail</strong><div class="muted" style="margin-top:6px">Recordings stored and played directly from the browser.</div></div>
-          <div class="feature"><strong>Admin & Billing</strong><div class="muted" style="margin-top:6px">Profile, expiration, and user management APIs.</div></div>
-          <div class="feature"><strong>Mobile-ready</strong><div class="muted" style="margin-top:6px">Works in modern mobile browsers and WebView (for Play Store WebView).</div></div>
+          <div class="feature">
+            <strong>Softphone — Ideal for individuals & SMBs</strong>
+            <div class="muted" style="margin-top:8px">
+              • Browser-based softphone (no client installs)<br>
+              • Virtual number provisioning (TFN optional)<br>
+              • Unlimited PSTN calling (plans) & in-browser DTMF<br>
+              • Unlimited SMS & MMS with attachments<br>
+              • Voicemail recordings, playback & downloads<br>
+              • Simple account & user profile management
+            </div>
+          </div>
+
+          <div class="feature">
+            <strong>TFN — Designed for offshore & international call centers</strong>
+            <div class="muted" style="margin-top:8px">
+              • Global toll-free numbers for many countries<br>
+              • Unlimited extensions & multi-agent routing<br>
+              • Advanced call routing, IVR & failover rules<br>
+              • High-volume inbound handling for contact centers<br>
+              • Enterprise reporting, recording & integrations
+            </div>
+          </div>
+
+          <div class="feature">
+            <strong>Shared capabilities</strong>
+            <div class="muted" style="margin-top:8px">
+              • Secure login & per-user profiles<br>
+              • Web APIs (backend hosted on Render)<br>
+              • SMS threading, file attachments & delivery updates<br>
+              • Responsive UI for desktop & mobile browsers
+            </div>
+          </div>
+
+          <div class="feature">
+            <strong>Compliance & reliability</strong>
+            <div class="muted" style="margin-top:8px">
+              • Call recording and storage options<br>
+              • Geo-aware routing & regional compliance support<br>
+              • SLA options for enterprise TFN customers
+            </div>
+          </div>
+
+          <div class="feature">
+            <strong>Integrations</strong>
+            <div class="muted" style="margin-top:8px">
+              • Twilio-powered voice & messaging (softphone)<br>
+              • Easy webhook hooks for CRM / ticketing systems<br>
+              • Custom integrations available for TFN customers
+            </div>
+          </div>
+
+          <div class="feature">
+            <strong>Getting started</strong>
+            <div class="muted" style="margin-top:8px">
+              • Softphone: signup → assign virtual number → call & message<br>
+              • TFN: contact sales for provisioning global TFNs & routing
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="products" class="section">
+        <h3 style="margin:0 0 12px 0">Product pages</h3>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div style="background:var(--card);padding:18px;border-radius:12px;box-shadow:var(--shadow);min-width:260px;flex:1">
+            <h4 style="margin:0 0 8px 0">Softphone</h4>
+            <div class="muted" style="margin-bottom:12px">Built for individuals, freelancers, and small businesses who need an easy, affordable in-browser telephony solution.</div>
+            <a class="primaryBtn" href="/softphone.html">Open Softphone</a>
+          </div>
+
+          <div style="background:var(--card);padding:18px;border-radius:12px;box-shadow:var(--shadow);min-width:260px;flex:1">
+            <h4 style="margin:0 0 8px 0">TFN (Toll-Free Numbers)</h4>
+            <div class="muted" style="margin-bottom:12px">For international businesses and offshore contact centers requiring global TFNs, extensions and enterprise routing.</div>
+            <a class="ghostBtn" href="/tfn.html">Open TFN Console</a>
+          </div>
         </div>
       </section>
 
       <section id="contact" class="section" style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
         <div style="flex:1;min-width:260px;background:var(--card);padding:18px;border-radius:12px;box-shadow:var(--shadow)">
           <h3 style="margin:0 0 8px 0">Contact & Support</h3>
-          <div class="muted" style="font-size:14px">We're here to help — reach out for onboarding or troubleshooting.</div>
+          <div class="muted" style="font-size:14px">For product questions, provisioning TFNs, or enterprise sales, contact our team.</div>
           <div style="margin-top:12px">
-            <div style="font-weight:700">Phone</div>
-            <div class="muted">+1 (803) 346-6904</div>
+            <div style="font-weight:700">Sales & TFN provisioning</div>
+            <div class="muted">sales@callbridge.example (replace with real email)</div>
           </div>
           <div style="margin-top:8px">
-            <div style="font-weight:700">Email</div>
+            <div style="font-weight:700">Support</div>
             <div class="muted"><a href="mailto:callbridge.2025@gmail.com">callbridge.2025@gmail.com</a></div>
           </div>
         </div>
@@ -173,7 +239,7 @@
         <div style="flex:1;min-width:260px">
           <div style="background:var(--card);padding:18px;border-radius:12px;box-shadow:var(--shadow)">
             <h3 style="margin:0 0 8px 0">Get started</h3>
-            <p class="muted" style="margin:0 0 12px">Open the product you want to use and sign in with your assigned credentials.</p>
+            <p class="muted" style="margin:0 0 12px">Open the product you want to use and sign in with your assigned credentials. TFN customers: contact sales to provision required country toll-free numbers.</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap">
               <a class="primaryBtn" href="/softphone.html">Open Softphone</a>
               <a class="ghostBtn" href="/tfn.html">Open TFN</a>
@@ -193,11 +259,7 @@
   </div>
 
   <script>
-    // tiny niceties
     document.getElementById('year').innerText = new Date().getFullYear();
-
-    // If you want to open softphone in a new tab from CTA, uncomment example below:
-    // document.querySelector('.primaryBtn').addEventListener('click', (e)=>{ window.open('/softphone.html','_blank'); e.preventDefault(); });
   </script>
 </body>
 </html>
