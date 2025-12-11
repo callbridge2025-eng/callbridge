@@ -14,9 +14,17 @@
       --bg:#f4f6f9; --card:#ffffff; --muted:#6b7280; --accent:#2563eb; --green:#10b981;
       --danger:#ef4444; --shadow: 0 8px 30px rgba(2,6,23,0.08);
     }
-    #smsBody { 
+    #smsBody {
+  width: 100%;
+  box-sizing: border-box;
   resize: vertical;
-  max-height: 120px; /* prevents breaking layout */
+  max-height: 140px;    /* limit how tall the composer grows */
+  min-height: 48px;     /* initial visible size */
+  overflow: auto;       /* scroll inside textarea when content exceeds */
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #e6e9ef;
+  font-size: 14px;
 }
     *{box-sizing:border-box;font-family:Inter,Segoe UI,Arial;}
     html,body{height:100%;margin:0;background:var(--bg)}
