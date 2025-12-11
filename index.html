@@ -208,7 +208,37 @@
     .muted{color:var(--muted);font-size:13px}
 
     /* Left - Dialpad / Active Call */
-    #left { display:flex;flex-direction:column; gap:12px; align-items:center }
+    /* Left panel: allow scroll inside when content gets tall */
+#left{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+
+  /* IMPORTANT for scrolling */
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Make the dialpad area scrollable when needed */
+#dialpadArea{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  width: 100%;
+  flex: 1 1 auto;       /* take available space */
+  min-height: 0;        /* allow shrinking */
+  overflow-y: auto;     /* enables scroll */
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 12px; /* avoid content touching bottom */
+}
+
+/* Active call controls stay fixed-height */
+#activeArea{
+  flex: 0 0 auto;
+}
+
     #callerNumber { font-weight:700; color:#111827; }
     input#dialInput { width:220px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;font-size:16px }
 
