@@ -125,12 +125,12 @@
   padding-right: 0;
 }
 
-.smsThreadPane{
+.smsThreadPane {
   flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  max-height: none;
+  height: calc(100vh - 36px); /* keep inside your .panel vertical space */
+  min-height: 0; /* IMPORTANT: allows children to collapse and scroll properly */
 }
 
 #smsThreadHeader{
@@ -212,20 +212,29 @@
 
 /* Make messages scroll independently */
 #smsThreadMessages {
-  flex: 1;
+  flex: 1 1 auto;           /* take remaining space */
+  min-height: 0;            /* IMPORTANT for proper overflow in flex children */
   overflow-y: auto;
-  max-height: calc(100% - 140px); /* adjust space for composer */
-  padding-bottom: 10px;
+  padding: 8px 12px;
+  background: #f9f9fb;
+  border-radius: 10px;
+  margin-top: 8px;
 }
 
 /* Keep composer fixed at the bottom */
 .threadComposer {
   flex-shrink: 0;
-  background: #fff;
-  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 6px 0;
+  margin-top: 8px;
+  background: transparent;
   border-top: 1px solid #e5e7eb;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
-
 
     /* Login modal overrides (keeps the same card style) */
     #loginModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10000;align-items:center;justify-content:center}
