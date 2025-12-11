@@ -201,13 +201,30 @@
   text-overflow:ellipsis;
 }
 
+.threadComposer{
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;    /* 🚀 prevents chats from shrinking */
+  padding-bottom: 6px;
+}
+
+/* Make messages scroll independently */
+#smsThreadMessages {
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(100% - 140px); /* adjust space for composer */
+  padding-bottom: 10px;
+}
+
+/* Keep composer fixed at the bottom */
 .threadComposer {
   flex-shrink: 0;
   background: #fff;
   padding-top: 6px;
   border-top: 1px solid #e5e7eb;
 }
-
 
 
     /* Login modal overrides (keeps the same card style) */
