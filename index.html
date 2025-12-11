@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Call Bridge — Softphone & TFN</title>
-  <meta name="description" content="Call Bridge — browser softphone and TFN (toll-free number) services for businesses and contact centers." />
+  <title>Call Bridge — Softphone & TFN by Tech Talk Titans</title>
+  <meta name="description" content="Call Bridge — browser softphone and TFN (toll-free number) services provided by Tech Talk Titans. Softphone for individuals & SMBs; TFN for international businesses and contact centers." />
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
   <style>
     :root{
@@ -16,26 +16,29 @@
       --glass: rgba(255,255,255,0.7);
       --radius: 12px;
       --shadow: 0 10px 30px rgba(2,6,23,0.08);
-      --max: 1080px;
+      --max: 1100px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Helvetica Neue", monospace;
     }
     *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto, "Helvetica Neue", Arial}
-    html,body{height:100%;margin:0;background:linear-gradient(180deg,#f7f9fc,var(--bg))}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#f7f9fc,var(--bg));color:#0f172a}
     a{color:inherit;text-decoration:none}
     .wrap{max-width:var(--max);margin:36px auto;padding:24px}
-    header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
     .brand{display:flex;align-items:center;gap:12px}
     .logo{
       width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));
       display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px;box-shadow:var(--shadow)
     }
-    .brand h1{margin:0;font-size:18px}
-    nav{display:flex;gap:12px;align-items:center}
+    .brandText{line-height:1}
+    .brandText h1{margin:0;font-size:18px}
+    .brandText .parent{font-size:12px;color:var(--muted)}
+    nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     nav a.btn{padding:8px 12px;border-radius:10px;background:transparent;border:1px solid rgba(0,0,0,0.06);font-size:14px;color:var(--muted)}
     .hero{
-      margin-top:28px;
+      margin-top:18px;
       background:var(--card);
       border-radius:var(--radius);
-      padding:32px;
+      padding:28px;
       box-shadow:var(--shadow);
       display:flex;
       gap:28px;
@@ -43,9 +46,9 @@
       flex-wrap:wrap;
     }
     .heroContent{flex:1;min-width:260px}
-    .kicker{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:var(--accent);font-weight:600;font-size:13px;margin-bottom:14px}
-    h2{margin:0 0 12px 0;font-size:28px}
-    p.lead{margin:0 0 18px 0;color:var(--muted);line-height:1.5}
+    .kicker{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:var(--accent);font-weight:600;font-size:13px;margin-bottom:12px}
+    h2{margin:0 0 12px 0;font-size:26px}
+    p.lead{margin:0 0 16px 0;color:var(--muted);line-height:1.5}
     .ctaRow{display:flex;gap:12px;flex-wrap:wrap}
     .primaryBtn{
       display:inline-flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;border:none;cursor:pointer;
@@ -60,29 +63,36 @@
     .feature{background:var(--card);padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.03);font-size:14px}
     .section{margin-top:28px}
     .accessProducts{
-      display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;
+      display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;
     }
     .prodBtn{
-      padding:14px 18px;border-radius:10px;border:none;cursor:pointer;font-weight:700;min-width:180px;text-align:center;
+      padding:12px 14px;border-radius:10px;border:none;cursor:pointer;font-weight:700;min-width:160px;text-align:center;
       box-shadow:0 8px 22px rgba(2,6,23,0.06);
     }
     .prodSoft{background:linear-gradient(90deg,var(--accent),#3b82f6);color:#fff}
     .prodTfn{background:linear-gradient(90deg,#06b6d4,#7c3aed);color:#fff}
+    .legal{font-size:14px;color:var(--muted);line-height:1.6}
     footer{margin-top:36px;padding:18px 12px;border-radius:10px;background:transparent;color:var(--muted);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
     .contact{display:flex;gap:12px;align-items:center;color:var(--muted)}
-    @media (max-width:880px){
+    .small{font-size:13px;color:var(--muted)}
+    @media (max-width:920px){
       .features{grid-template-columns:repeat(2,1fr)}
       .hero{padding:20px}
-      .heroContent{order:1}
       .productCard{max-width:100%}
     }
     @media (max-width:560px){
-      header{flex-direction:column;align-items:flex-start;gap:12px}
+      header{flex-direction:column;align-items:flex-start;gap:10px}
       .features{grid-template-columns:1fr}
       .hero{flex-direction:column}
       .ctaRow{flex-direction:column;align-items:stretch}
       nav{width:100%;justify-content:flex-end}
     }
+
+    /* small utilities */
+    .muted{color:var(--muted)}
+    .hr{height:1px;background:#eef2ff;border-radius:2px;margin:20px 0}
+    .mono{font-family:var(--mono);font-size:13px;background:#f8fafc;padding:8px;border-radius:8px;display:inline-block}
+    .toc{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
     .linkTiny{font-size:13px;color:var(--accent);text-decoration:underline}
   </style>
 </head>
@@ -90,17 +100,18 @@
   <div class="wrap">
     <header>
       <div class="brand">
-        <div class="logo">CB</div>
-        <div>
+        <div class="logo" aria-hidden>CB</div>
+        <div class="brandText">
           <h1>Call Bridge</h1>
-          <div class="muted" style="font-size:13px;color:var(--muted)">Browser telephony & global TFN services</div>
+          <div class="parent small muted">A product of <strong>Tech Talk Titans</strong></div>
         </div>
       </div>
 
       <nav>
         <a class="btn" href="#features">Features</a>
+        <a class="btn" href="#about">About</a>
         <a class="btn" href="#products">Products</a>
-        <a class="btn" href="#contact">Contact</a>
+        <a class="btn" href="#legal">Terms & Privacy</a>
         <a class="btn" href="/softphone.html">Open Softphone</a>
       </nav>
     </header>
@@ -108,142 +119,195 @@
     <main>
       <section class="hero" aria-labelledby="hero-title">
         <div class="heroContent">
-          <div class="kicker">Two products — different audiences</div>
-          <h2 id="hero-title">Softphone for individuals & SMBs — TFN for international contact centers</h2>
-          <p class="lead">Call Bridge provides two dedicated offerings: a browser softphone (fast setup, Twilio-based PSTN calling, SMS/MMS, voicemail) for individuals and small teams — and TFN, a global toll-free-number & routing platform designed for offshore call centers and enterprise international operations.</p>
+          <div class="kicker">Two focused offerings</div>
+          <h2 id="hero-title">Browser softphone for individuals & SMBs — TFN platform for global contact centers</h2>
+          <p class="lead">Call Bridge delivers two distinct products tailored to different audiences. Softphone gives individuals and small teams a powerful browser-based telephony suite (virtual numbers, PSTN calling, messaging, voicemail). TFN (Toll-Free Numbers) is a separate platform built for offshore and international contact centers who need global toll-free coverage, extensions, and enterprise routing.</p>
 
-          <div class="ctaRow">
+          <div class="ctaRow" role="group" aria-label="Primary product actions">
             <a class="primaryBtn" href="/softphone.html" role="button">Open Softphone →</a>
             <a class="ghostBtn" href="/tfn.html" role="button">Open TFN Console</a>
           </div>
 
-          <div style="margin-top:18px;color:var(--muted);font-size:14px">
-            <strong>Quick links:</strong>
-            <span style="margin-left:10px"><a class="linkTiny" href="/softphone.html">/softphone.html</a></span>
-            <span style="margin-left:10px"><a class="linkTiny" href="/tfn.html">/tfn.html</a></span>
+          <div style="margin-top:12px;color:var(--muted);font-size:14px">
+            Quick links:
+            <span style="margin-left:8px"><a class="linkTiny" href="/softphone.html">/softphone.html</a></span>
+            <span style="margin-left:8px"><a class="linkTiny" href="/tfn.html">/tfn.html</a></span>
           </div>
         </div>
 
-        <div style="min-width:260px;max-width:420px">
-          <div class="productCard">
+        <aside style="min-width:260px;max-width:420px">
+          <div class="productCard" id="products">
             <h3 style="margin:0 0 8px 0">Access Products</h3>
-            <p class="muted" style="margin:0 0 12px">Choose which product you want to open. Each product is tailored to a different audience — read the short descriptions before you proceed.</p>
+            <p class="muted" style="margin:0 0 12px">Select the product you need. Each button opens a dedicated interface.</p>
 
-            <div class="accessProducts" id="products">
+            <div class="accessProducts">
               <a href="/softphone.html" class="prodBtn prodSoft" title="Softphone for Individuals & SMBs">Softphone</a>
               <a href="/tfn.html" class="prodBtn prodTfn" title="TFN for Call Centers & International Business">TFN</a>
             </div>
 
             <div style="margin-top:12px;font-size:13px;color:var(--muted)">
-              Softphone = simple setup, direct PSTN calling & messaging. TFN = global toll-free numbers, routing, and extensions for contact centers.
+              Softphone — self-service telephony. TFN — enterprise TFN provisioning & routing.
             </div>
           </div>
-        </div>
+        </aside>
       </section>
 
       <section id="features" class="section">
-        <h3 style="margin:0 0 12px 0">Products & core features</h3>
+        <h3 style="margin:0 0 12px 0">Core features — at a glance</h3>
+
         <div class="features">
           <div class="feature">
-            <strong>Softphone — Ideal for individuals & SMBs</strong>
+            <strong>Softphone (Individuals & SMBs)</strong>
             <div class="muted" style="margin-top:8px">
-              • Browser-based softphone (no client installs)<br>
-              • Virtual number provisioning (TFN optional)<br>
-              • Unlimited PSTN calling (plans) & in-browser DTMF<br>
-              • Unlimited SMS & MMS with attachments<br>
-              • Voicemail recordings, playback & downloads<br>
-              • Simple account & user profile management
+              • Browser softphone (no install) · Twilio-powered voice & messaging<br>
+              • Virtual numbers, unlimited calling/SMS/MMS (plan dependent)<br>
+              • Voicemail recording & playback<br>
+              • Simple user profile & quick onboarding
             </div>
           </div>
 
           <div class="feature">
-            <strong>TFN — Designed for offshore & international call centers</strong>
+            <strong>TFN (Global Toll-Free)</strong>
             <div class="muted" style="margin-top:8px">
-              • Global toll-free numbers for many countries<br>
+              • Global toll-free numbers across many countries<br>
               • Unlimited extensions & multi-agent routing<br>
-              • Advanced call routing, IVR & failover rules<br>
-              • High-volume inbound handling for contact centers<br>
-              • Enterprise reporting, recording & integrations
+              • Call center features: IVR, failover, recording, reporting<br>
+              • Enterprise provisioning & SLA options
             </div>
           </div>
 
           <div class="feature">
             <strong>Shared capabilities</strong>
             <div class="muted" style="margin-top:8px">
-              • Secure login & per-user profiles<br>
-              • Web APIs (backend hosted on Render)<br>
-              • SMS threading, file attachments & delivery updates<br>
-              • Responsive UI for desktop & mobile browsers
+              • Secure authentication & profile management<br>
+              • SMS threads, attachments, and delivery status<br>
+              • Backend APIs hosted on Render for integrations
             </div>
           </div>
 
           <div class="feature">
-            <strong>Compliance & reliability</strong>
+            <strong>Security & compliance</strong>
             <div class="muted" style="margin-top:8px">
-              • Call recording and storage options<br>
-              • Geo-aware routing & regional compliance support<br>
-              • SLA options for enterprise TFN customers
+              • TLS for API traffic, role-based access controls<br>
+              • Call and message logging for troubleshooting & audits<br>
+              • Options for data retention and export
             </div>
           </div>
 
           <div class="feature">
             <strong>Integrations</strong>
             <div class="muted" style="margin-top:8px">
-              • Twilio-powered voice & messaging (softphone)<br>
-              • Easy webhook hooks for CRM / ticketing systems<br>
-              • Custom integrations available for TFN customers
+              • Webhooks for CRM/ticketing systems<br>
+              • Recording export & S3-style storage options<br>
+              • Custom integrations for TFN enterprise customers
             </div>
           </div>
 
           <div class="feature">
             <strong>Getting started</strong>
             <div class="muted" style="margin-top:8px">
-              • Softphone: signup → assign virtual number → call & message<br>
-              • TFN: contact sales for provisioning global TFNs & routing
+              • Softphone: sign up, assign a number, start calling<br>
+              • TFN: contact sales for global TFN provisioning
             </div>
           </div>
         </div>
       </section>
 
-      <section id="products" class="section">
-        <h3 style="margin:0 0 12px 0">Product pages</h3>
-        <div style="display:flex;gap:16px;flex-wrap:wrap">
-          <div style="background:var(--card);padding:18px;border-radius:12px;box-shadow:var(--shadow);min-width:260px;flex:1">
-            <h4 style="margin:0 0 8px 0">Softphone</h4>
-            <div class="muted" style="margin-bottom:12px">Built for individuals, freelancers, and small businesses who need an easy, affordable in-browser telephony solution.</div>
-            <a class="primaryBtn" href="/softphone.html">Open Softphone</a>
-          </div>
+      <div class="hr"></div>
 
-          <div style="background:var(--card);padding:18px;border-radius:12px;box-shadow:var(--shadow);min-width:260px;flex:1">
-            <h4 style="margin:0 0 8px 0">TFN (Toll-Free Numbers)</h4>
-            <div class="muted" style="margin-bottom:12px">For international businesses and offshore contact centers requiring global TFNs, extensions and enterprise routing.</div>
-            <a class="ghostBtn" href="/tfn.html">Open TFN Console</a>
-          </div>
+      <!-- ABOUT -->
+      <section id="about" class="section">
+        <h3>About Call Bridge</h3>
+        <p class="legal">
+          <strong>Call Bridge</strong> is a web-first telephony product built to make calling, messaging and voicemail simple for individuals and small businesses. Our softphone offers fast onboarding, a modern in-browser calling experience, and threaded messaging with attachments.
+        </p>
+
+        <p class="legal">
+          <strong>TFN</strong> is a separate, enterprise-focused offering under the Call Bridge family that provides global toll-free number provisioning, extensions, and high-volume inbound routing for offshore and international contact centers.
+        </p>
+
+        <p class="legal">
+          Both products are developed and maintained by <strong>Tech Talk Titans</strong>, our parent company. Tech Talk Titans is responsible for platform operations, compliance, and customer support.
+        </p>
+
+        <div style="margin-top:12px" class="muted">
+          <strong>Contact</strong>: <span class="mono">callbridge.2025@gmail.com</span> · <span class="mono">+1 (803) 346-6904</span>
         </div>
       </section>
 
-      <section id="contact" class="section" style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
-        <div style="flex:1;min-width:260px;background:var(--card);padding:18px;border-radius:12px;box-shadow:var(--shadow)">
-          <h3 style="margin:0 0 8px 0">Contact & Support</h3>
-          <div class="muted" style="font-size:14px">For product questions, provisioning TFNs, or enterprise sales, contact our team.</div>
-          <div style="margin-top:12px">
-            <div style="font-weight:700">Sales & TFN provisioning</div>
-            <div class="muted">sales@callbridge.example (replace with real email)</div>
-          </div>
-          <div style="margin-top:8px">
-            <div style="font-weight:700">Support</div>
-            <div class="muted"><a href="mailto:callbridge.2025@gmail.com">callbridge.2025@gmail.com</a></div>
-          </div>
+      <div class="hr"></div>
+
+      <!-- LEGAL: Terms & Privacy -->
+      <section id="legal" class="section">
+        <h3>Terms & Conditions</h3>
+
+        <div class="legal" style="margin-top:8px">
+          <p><strong>Effective:</strong> <span id="terms-date"></span></p>
+
+          <p><strong>1. Scope.</strong> These Terms & Conditions ("Terms") govern your access to and use of Call Bridge products and related services provided by Tech Talk Titans. By using our services (including the Softphone or TFN console), you agree to these Terms.</p>
+
+          <p><strong>2. Accounts.</strong> You are responsible for maintaining the confidentiality of your account credentials. You agree to provide accurate information and to notify us of unauthorized access.</p>
+
+          <p><strong>3. Acceptable use.</strong> You will not use our services to transmit illegal or harmful content or to engage in abusive calling/SMS patterns. We reserve the right to suspend accounts that violate laws or these Terms.</p>
+
+          <p><strong>4. Billing & plans.</strong> Softphone and TFN features may be subject to paid plans. Usage-based charges (e.g., PSTN termination, TFN provisioning, carrier fees) are billed according to the plan you select. Refer to your plan details for pricing and limits.</p>
+
+          <p><strong>5. Recording & privacy.</strong> Calls and messages may be logged or recorded for quality, troubleshooting, or compliance. Users must comply with applicable consent laws when recording calls.</p>
+
+          <p><strong>6. Liability.</strong> To the extent permitted by law, Tech Talk Titans' liability is limited. We provide the services "as-is" and cannot guarantee uninterrupted operation. For enterprise TFN customers, SLA options are available under separate agreements.</p>
+
+          <p><strong>7. Termination.</strong> We may suspend or terminate access if you breach these Terms or if required by law. On termination, any unpaid fees remain payable.</p>
+
+          <p><strong>8. Changes.</strong> We may change these Terms; material changes will be posted and, where required, communicated to account administrators.</p>
         </div>
 
-        <div style="flex:1;min-width:260px">
-          <div style="background:var(--card);padding:18px;border-radius:12px;box-shadow:var(--shadow)">
-            <h3 style="margin:0 0 8px 0">Get started</h3>
-            <p class="muted" style="margin:0 0 12px">Open the product you want to use and sign in with your assigned credentials. TFN customers: contact sales to provision required country toll-free numbers.</p>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <a class="primaryBtn" href="/softphone.html">Open Softphone</a>
-              <a class="ghostBtn" href="/tfn.html">Open TFN</a>
-            </div>
+        <div style="height:20px"></div>
+
+        <h3>Privacy Policy</h3>
+        <div class="legal" style="margin-top:8px">
+          <p><strong>Effective:</strong> <span id="privacy-date"></span></p>
+
+          <p><strong>Overview.</strong> Tech Talk Titans (operator of Call Bridge) collects and processes information necessary to provide telephony services (account information, call logs, message content, recordings, billing data). We are committed to handling customer data responsibly.</p>
+
+          <p><strong>Data Collected.</strong> We may collect:</p>
+          <ul>
+            <li>Account details (name, email, company)</li>
+            <li>Call and message metadata (timestamps, numbers, durations)</li>
+            <li>Call recordings and message bodies (when consented or part of service)</li>
+            <li>Usage logs and diagnostic data</li>
+          </ul>
+
+          <p><strong>Purpose.</strong> Data is used to operate the service, support customers, fulfill legal obligations, and improve the product (analytics, troubleshooting).</p>
+
+          <p><strong>Sharing & processors.</strong> We use trusted service providers (e.g., Twilio for voice and messaging; hosting providers) who may process data on our behalf. We do not sell personal data.</p>
+
+          <p><strong>Security.</strong> We use industry standard measures (TLS, access controls) to protect data. No system is perfectly secure — if a breach occurs we will follow applicable notification rules.</p>
+
+          <p><strong>Retention.</strong> CallBridge retains logs, message histories and recordings according to account settings and legal requirements. Contact support to request exports or deletions subject to account and legal constraints.</p>
+
+          <p><strong>Contact & data requests.</strong> For privacy requests (access, correction, deletion), contact <a href="mailto:callbridge.2025@gmail.com">callbridge.2025@gmail.com</a>. Enterprise customers can arrange custom retention and export arrangements under separate agreements.</p>
+
+          <p><strong>Children.</strong> Our services are not directed to children under 16. If you believe we have inadvertently collected data about a child, contact us to remove it.</p>
+
+          <p><em>Note:</em> This privacy summary is for convenience. Replace or augment it with a formal privacy notice reviewed by legal counsel to meet all jurisdictional requirements (GDPR, CCPA, etc.) if needed.</p>
+        </div>
+      </section>
+
+      <div class="hr"></div>
+
+      <section id="contact" class="section">
+        <h3>Contact & Support</h3>
+        <div style="display:flex;gap:18px;flex-wrap:wrap">
+          <div style="flex:1;min-width:260px;background:var(--card);padding:16px;border-radius:10px;box-shadow:var(--shadow)">
+            <div style="font-weight:700">General & Support</div>
+            <div class="muted" style="margin-top:6px">Email: <a href="mailto:callbridge.2025@gmail.com">callbridge.2025@gmail.com</a></div>
+            <div class="muted" style="margin-top:6px">Phone: <span class="mono">+1 (803) 346-6904</span></div>
+          </div>
+
+          <div style="flex:1;min-width:260px;background:var(--card);padding:16px;border-radius:10px;box-shadow:var(--shadow)">
+            <div style="font-weight:700">Sales & TFN Provisioning</div>
+            <div class="muted" style="margin-top:6px">For TFN provisioning and enterprise inquiries, contact sales: <a href="mailto:sales@callbridge.example">sales@callbridge.example</a></div>
+            <div class="muted" style="margin-top:6px">Note: replace placeholder email with your real sales address.</div>
           </div>
         </div>
       </section>
@@ -252,14 +316,36 @@
     <footer>
       <div class="contact">
         <div style="font-weight:700">Call Bridge</div>
-        <div style="font-size:13px;color:var(--muted)">© <span id="year"></span> Call Bridge — All rights reserved</div>
+        <div class="small muted">A product by Tech Talk Titans</div>
+        <div class="small muted" style="margin-left:10px">© <span id="year"></span> Tech Talk Titans</div>
       </div>
-      <div style="font-size:13px;color:var(--muted)">Hosted on Vercel · Backend on Render</div>
+
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <a class="linkTiny" href="#about">About</a>
+        <a class="linkTiny" href="#legal">Terms & Privacy</a>
+        <a class="linkTiny" href="/softphone.html">Softphone</a>
+        <a class="linkTiny" href="/tfn.html">TFN</a>
+      </div>
     </footer>
   </div>
 
   <script>
-    document.getElementById('year').innerText = new Date().getFullYear();
+    // set dates and year dynamically
+    const now = new Date();
+    const dt = now.toISOString().split('T')[0];
+    document.getElementById('year').innerText = now.getFullYear();
+    document.getElementById('terms-date').innerText = dt;
+    document.getElementById('privacy-date').innerText = dt;
+
+    // smooth anchor scrolling
+    document.querySelectorAll('a[href^="#"]').forEach(a=>{
+      a.addEventListener('click', (e)=>{
+        e.preventDefault();
+        const id = a.getAttribute('href').slice(1);
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+      });
+    });
   </script>
 </body>
 </html>
