@@ -122,10 +122,11 @@
 }
 
 .smsThreadPane{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-  max-height:360px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: none;
 }
 
 #smsThreadHeader{
@@ -197,12 +198,13 @@
 }
 
 .threadComposer{
-  margin-top:8px;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;    /* 🚀 prevents chats from shrinking */
+  padding-bottom: 6px;
 }
-
 
 
 
