@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TFN Console — Call Bridge (Tech Talk Titans)</title>
+  <meta name="description" content="TFN by Call Bridge — global toll-free numbers, unlimited extensions, enterprise routing and provisioning for international contact centers." />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <style>
+    :root{
+      --bg:#f6f8fb; --card:#fff; --muted:#6b7280; --accent:#2563eb; --accent-2:#7c3aed;
+      --radius:12px; --shadow:0 10px 30px rgba(2,6,23,0.08); --max:1100px;
+    }
+    *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#f7f9fc,var(--bg));color:#07102a}
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:var(--max);margin:36px auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{width:48px;height:48px;border-radius:10px;object-fit:contain;box-shadow:var(--shadow)}
+    .brandText h1{margin:0;font-size:18px}
+    .brandText .parent{font-size:12px;color:var(--muted)}
+    nav{display:flex;gap:10px;align-items:center}
+    nav a.btn{padding:8px 10px;border-radius:10px;background:transparent;border:1px solid rgba(0,0,0,0.06);font-size:13px;color:var(--muted)}
+    .hero{margin-top:18px;background:var(--card);padding:22px;border-radius:var(--radius);box-shadow:var(--shadow);display:flex;gap:18px;flex-wrap:wrap}
+    .hero .col{flex:1;min-width:260px}
+    .kicker{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:var(--accent);font-weight:600;font-size:13px;margin-bottom:12px}
+    h2{margin:0 0 10px 0;font-size:22px}
+    p.lead{margin:0 0 12px 0;color:var(--muted);line-height:1.5}
+    .features{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:16px}
+    .feature{background:#fff;padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.03);font-size:14px}
+    .section{margin-top:22px}
+    .card{background:#fff;padding:16px;border-radius:12px;box-shadow:0 8px 30px rgba(2,6,23,0.04)}
+    .muted{color:var(--muted)}
+    .ctaRow{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
+    .primary{background:var(--accent);color:#fff;border:none;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer}
+    .ghost{background:transparent;border:1px solid #eef2ff;padding:10px 14px;border-radius:10px;cursor:pointer}
+    input,textarea,select{width:100%;padding:10px;border:1px solid #eef2ff;border-radius:8px;box-sizing:border-box;font-size:14px}
+    label{font-size:13px;margin-bottom:6px;display:block}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .footer{margin-top:28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;color:var(--muted)}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace}
+    @media (max-width:880px){ .features{grid-template-columns:1fr} .grid2{grid-template-columns:1fr} .hero{flex-direction:column} }
+    .note{font-size:13px;color:var(--muted);margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <img src="/logo.png" alt="Call Bridge logo" class="logo" />
+        <div class="brandText">
+          <h1>Call Bridge</h1>
+          <div class="parent muted">A product of <strong>Tech Talk Titans</strong></div>
+        </div>
+      </div>
+
+      <nav>
+        <a class="btn" href="/index.html">Home</a>
+        <a class="btn" href="/softphone.html">Softphone</a>
+        <a class="btn" href="#how-it-works">How it works</a>
+        <a class="btn" href="#quote">Get Quote</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="tfn-title">
+        <div class="col">
+          <div class="kicker">Enterprise TFN</div>
+          <h2 id="tfn-title">Global Toll-Free Numbers & Contact Center Solutions</h2>
+          <p class="lead">TFN by Call Bridge delivers country-by-country toll-free number provisioning, intelligent routing, unlimited extensions on client requirements, and enterprise-grade features for offshore and international call centers.</p>
+
+          <div class="ctaRow">
+            <a href="#quote" class="primary">Request a Quote</a>
+            <a href="tel:+18033466904" class="ghost">Call Sales: +1 (803) 346-6904</a>
+          </div>
+
+          <div class="note">To get access or start provisioning TFNs, please contact our Sales team (phone or email) with your requirements; we handle provisioning and custom routing per client needs.</div>
+        </div>
+
+        <div class="col" style="max-width:360px">
+          <div class="card">
+            <h3 style="margin-top:0">TFN Highlights</h3>
+            <ul class="muted">
+              <li>Global toll-free (country by country) — provisioning assistance</li>
+              <li>Unlimited extensions & per-agent routing on request</li>
+              <li>IVR, call queues, failover, geo-routing</li>
+              <li>Call recording, analytics & reporting</li>
+              <li>Enterprise SLAs and high-volume handling</li>
+            </ul>
+            <div style="margin-top:12px">
+              <div style="font-weight:700">Sales & provisioning</div>
+              <div class="muted">Phone: <a href="tel:+18033466904" class="mono">+1 (803) 346-6904</a></div>
+              <div class="muted">Email: <a href="mailto:callbridge.2025@gmail.com">callbridge.2025@gmail.com</a></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="section">
+        <h3>How TFN provisioning works</h3>
+        <div class="features">
+          <div class="feature">
+            <strong>1. Requirements & quote</strong>
+            <div class="muted" style="margin-top:8px">You tell us the countries, anticipated monthly minutes, expected concurrency and routing preferences. We provide a customized quote and provisioning timeline.</div>
+          </div>
+
+          <div class="feature">
+            <strong>2. Number provisioning</strong>
+            <div class="muted" style="margin-top:8px">We provision toll-free numbers for the requested countries (subject to local carrier/regulatory processes) and confirm activation dates.</div>
+          </div>
+
+          <div class="feature">
+            <strong>3. Routing & extensions</strong>
+            <div class="muted" style="margin-top:8px">We configure unlimited extensions, IVR, agent queues and failover rules per your needs and integrate with your SIP / PSTN / CRM systems.</div>
+          </div>
+
+          <div class="feature">
+            <strong>4. Go-live & support</strong>
+            <div class="muted" style="margin-top:8px">We conduct tests, begin live routing, and provide monitoring and support. Enterprise SLAs can be part of your contract.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="quote" class="section">
+        <h3>Request a Quote / Get Access</h3>
+
+        <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
+          <div>
+            <div class="card">
+              <form id="quoteForm" onsubmit="return buildMailto();">
+                <div class="grid2">
+                  <div>
+                    <label for="name">Full name</label>
+                    <input id="name" name="name" type="text" placeholder="Jane Doe" required />
+                  </div>
+                  <div>
+                    <label for="company">Company</label>
+                    <input id="company" name="company" type="text" placeholder="Acme Contact Centers" />
+                  </div>
+                </div>
+
+                <div style="margin-top:10px">
+                  <label for="email">Email</label>
+                  <input id="email" name="email" type="email" placeholder="you@company.com" required />
+                </div>
+
+                <div style="margin-top:10px">
+                  <label for="phone">Phone (best contact)</label>
+                  <input id="phone" name="phone" type="tel" placeholder="+1 555 555 5555" />
+                </div>
+
+                <div style="margin-top:10px">
+                  <label for="countries">Countries / TFNs requested</label>
+                  <input id="countries" name="countries" type="text" placeholder="e.g., US, UK, AU, DE" />
+                </div>
+
+                <div style="margin-top:10px">
+                  <label for="minutes">Estimated monthly minutes</label>
+                  <select id="minutes" name="minutes">
+                    <option value="unknown">Not sure</option>
+                    <option value="0-10k">0–10k</option>
+                    <option value="10k-50k">10k–50k</option>
+                    <option value="50k-200k">50k–200k</option>
+                    <option value="200k+">200k+</option>
+                  </select>
+                </div>
+
+                <div style="margin-top:10px">
+                  <label for="notes">Additional notes (IVR, CRM, SLA requirements)</label>
+                  <textarea id="notes" name="notes" rows="4" placeholder="Describe routing, IVR, expected concurrency, integrations, or any compliance needs."></textarea>
+                </div>
+
+                <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+                  <button type="submit" class="primary">Email Sales for Quote</button>
+                  <button type="button" class="ghost" onclick="callSales()">Call Sales</button>
+                </div>
+
+                <div id="mailtoMsg" class="note" style="display:none"></div>
+              </form>
+            </div>
+
+            <div style="margin-top:12px" class="muted">
+              <strong>Important:</strong> TFN provisioning is subject to local carrier, regulatory and paperwork requirements in each country. Timelines vary — our sales team will advise.
+            </div>
+          </div>
+
+          <aside>
+            <div class="card">
+              <h4 style="margin-top:0">Immediate contact</h4>
+              <p class="muted">For fast response, call or email our sales team:</p>
+              <div style="margin-top:12px">
+                <div><strong>Phone</strong></div>
+                <div style="margin-top:6px"><a class="mono" href="tel:+18033466904">+1 (803) 346-6904</a></div>
+
+                <div style="margin-top:12px"><strong>Email</strong></div>
+                <div style="margin-top:6px"><a href="mailto:callbridge.2025@gmail.com">callbridge.2025@gmail.com</a></div>
+              </div>
+
+              <div style="margin-top:12px" class="note">Sales will confirm steps, pricing and a tailored timeline. For enterprise TFN customers we provide SLA and onboarding documents under contract.</div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Common Questions</h3>
+        <div style="display:grid;gap:10px">
+          <div class="card">
+            <strong>Can you provide toll-free numbers in every country?</strong>
+            <p class="muted">We support provisioning in many countries; availability depends on local carriers and regulatory requirements. Contact sales with country list and we will confirm availability.</p>
+          </div>
+
+          <div class="card">
+            <strong>Are extensions really unlimited?</strong>
+            <p class="muted">We configure unlimited extensions on request as part of the project scope — practical limits depend on call concurrency and backend SIP architecture. We'll size the solution to your needs.</p>
+          </div>
+
+          <div class="card">
+            <strong>How long does provisioning take?</strong>
+            <p class="muted">Provisioning times vary by country and paperwork. Some countries activate in days; others may take weeks due to carrier/regulatory processes. Sales will provide estimated timelines per-country.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="footer">
+      <div>
+        <div style="font-weight:700">Call Bridge</div>
+        <div class="muted">A product of Tech Talk Titans · © <span id="year"></span></div>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--muted)">
+        <a class="linkTiny" href="/index.html">Home</a>
+        <a class="linkTiny" href="/softphone.html">Softphone</a>
+        <a class="linkTiny" href="/tfn.html">TFN</a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    document.getElementById('year').innerText = new Date().getFullYear();
+
+    function callSales(){ window.location.href = 'tel:+18033466904'; }
+
+    function buildMailto(){
+      // Build mailto body from form values (mailto opens user's email client)
+      const name = encodeURIComponent(document.getElementById('name').value || '');
+      const company = encodeURIComponent(document.getElementById('company').value || '');
+      const email = encodeURIComponent(document.getElementById('email').value || '');
+      const phone = encodeURIComponent(document.getElementById('phone').value || '');
+      const countries = encodeURIComponent(document.getElementById('countries').value || '');
+      const minutes = encodeURIComponent(document.getElementById('minutes').value || '');
+      const notes = encodeURIComponent(document.getElementById('notes').value || '');
+
+      if (!email) { alert('Please enter an email so Sales can contact you.'); return false; }
+
+      const subject = encodeURIComponent('TFN Quote Request — ' + (company || name || 'Unknown'));
+      const bodyLines = [
+        'Name: ' + (document.getElementById('name').value || ''),
+        'Company: ' + (document.getElementById('company').value || ''),
+        'Email: ' + (document.getElementById('email').value || ''),
+        'Phone: ' + (document.getElementById('phone').value || ''),
+        'Countries / TFNs requested: ' + (document.getElementById('countries').value || ''),
+        'Estimated monthly minutes: ' + (document.getElementById('minutes').value || ''),
+        '',
+        'Notes:',
+        (document.getElementById('notes').value || '')
+      ];
+      const body = encodeURIComponent(bodyLines.join('\n'));
+
+      // Sales address — replace if you prefer another email
+      const salesEmail = 'callbridge.2025@gmail.com'; // change if needed
+
+      const mailto = `mailto:${salesEmail}?subject=${subject}&body=${body}`;
+
+      // Show a small message and then open the mail client
+      const msg = document.getElementById('mailtoMsg');
+      msg.style.display = 'block';
+      msg.innerText = 'Opening your email client to contact Sales… If nothing happens, email ' + salesEmail;
+      setTimeout(()=>{ window.location.href = mailto; }, 250);
+
+      // prevent actual form submission
+      return false;
+    }
+  </script>
+</body>
+</html>
