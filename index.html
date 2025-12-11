@@ -30,8 +30,8 @@
     html,body{height:100%;margin:0;background:var(--bg)}
     body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;padding:18px}
 
-    /* PANEL: make panels fixed-height columns and prevent whole-panel scrolling.
-   Inner sections (history, sms threads/messages) will handle their own scrolling. */
+   
+/* Make panel a column flex container and prevent whole-panel scrolling */
 .panel{
   background:var(--card);
   border-radius:12px;
@@ -40,75 +40,118 @@
   height:calc(100vh - 36px);
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* important: stop the whole panel from scrolling */
+  overflow: hidden; /* important: don't let the whole panel scroll */
 }
 
-/* Ensure main content areas fill the panel and manage their own overflow */
-.panel > * {
-  /* keep header / controls visible; first child (title row) should size to content */
-  flex: 0 0 auto;
+/* --- Panels: make inner areas scrollable only --- */
+/* Call history area: let the list take remaining space and scroll */
+#middle {
+  /* keep existing padding/header; make content stretch */
+  display: flex;
+  flex-direction: column;
 }
-
-/* Content region(s) that should take remaining space */
-.panel > :not(:first-child) {
+#historyList {
+  margin-top: 12px;
   flex: 1 1 auto;
-  min-height: 0; /* critical to allow internal scrolling in flex children */
-  overflow: hidden;
+  overflow-y: auto;
+  min-height: 0; /* allow flex children to overflow properly */
+  padding-right: 6px; /* give space for scrollbar */
 }
 
-/* SMS layout should fill the available panel space */
+/* SMS panel layout adjustments */
+#right {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Keep the top tabs and header fixed; sms layout should fill remaining space */
+#smsTab {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0; /* crucial for children overflow to work in flexbox */
+}
+
+/* Make smsLayout fill area and let its child panes manage their own scrolling */
 .smsLayout {
+  height: 100%;
+  min-height: 0;
   display: flex;
   gap: 12px;
-  margin-top: 10px;
   align-items: stretch;
-  flex: 1 1 auto;   /* take remaining vertical space in the panel */
-  min-height: 0;    /* allow children to scroll properly */
 }
 
-/* Left threads list */
+/* Threads list (left column) — scroll independently */
 .smsThreads {
   width: 38%;
   min-width: 150px;
   border-right: 1px solid #e5e7eb;
   padding-right: 8px;
-  overflow: auto; /* threads scroll independently */
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
 }
 
-/* Chat pane should be a column and manage its own scrolling */
+/* Chat pane (right) — column that keeps header fixed, messages scroll, composer sticky */
 .smsThreadPane {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  min-height: 0; /* allows #smsThreadMessages to overflow inside this flex column */
-  overflow: hidden;
+  height: 100%;
+  min-height: 0; /* IMPORTANT */
 }
 
-/* Messages area (ONLY this scrolls) */
+/* Header area (top of chat) stays natural height */
+#smsThreadHeader { flex: 0 0 auto; }
+
+/* Messages area takes remaining vertical space and scrolls */
 #smsThreadMessages {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 0; /* IMPORTANT for overflow in flex */
   overflow-y: auto;
-  padding: 8px 12px;
-  background: #f9f9fb;
+  padding: 8px 4px;
+  background: #f9fafb;
   border-radius: 10px;
   margin-top: 8px;
 }
 
-/* Composer stays visible at bottom of chat pane */
+/* Composer stays visible — sticky to bottom of chat pane */
 .threadComposer {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px 0 6px 0;
-  margin-top: 8px;
-  background: transparent;
-  border-top: 1px solid #e5e7eb;
+  flex: 0 0 auto;
   position: sticky;
   bottom: 0;
-  z-index: 2;
+  z-index: 3;
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.98));
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-top: 1px solid #e5e7eb;
 }
+
+/* Make sure the textarea and send button are visible and sized properly */
+#smsBody {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  max-height: 140px;
+  min-height: 48px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #e6e9ef;
+  font-size: 14px;
+}
+
+/* Ensure chat pane back button row doesn't grow and push composer away */
+#smsChatPane > div:first-child {
+  flex: 0 0 auto;
+}
+
+/* Minor spacing so Send button doesn't get cut on small heights */
+.threadComposer .btn.call {
+  align-self: flex-end;
+  margin-top: 6px;
+}
+
   h2{margin:0 0 8px 0}
     .muted{color:var(--muted);font-size:13px}
 
