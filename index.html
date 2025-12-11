@@ -165,6 +165,45 @@
   border-radius: 8px;
 }
 
+/* --- replace native file chooser with + inside the textarea --- */
+#smsFile { display: none; } /* keep input in DOM but hidden */
+
+.textareaWrap {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Plus button inside bottom-right of textarea */
+.filePlusBtn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: 0 6px 12px rgba(37,99,235,0.15);
+  z-index: 4;
+}
+
+/* make space so the plus doesn't overlap the text content */
+.textareaWrap textarea {
+  padding-right: 48px; /* room for the + button */
+}
+
+/* small filename label under composer (optional) */
+#smsFileName { font-size: 12px; color: var(--muted); margin-top: 6px; display:block; }
+
+
+    
   h2{margin:0 0 8px 0}
     .muted{color:var(--muted);font-size:13px}
 
@@ -527,26 +566,30 @@
     <div id="smsThreadMessages" class="threadMessages"></div>
 
     <div class="threadComposer">
-        <!-- Attach file (hidden input) + visible + button -->
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-      <!-- visible + button -->
-      <button id="smsAttachBtn" type="button" class="btn gray attachBtn" title="Attach file" aria-label="Attach file">＋</button>
+  <!-- Hidden native file input (still used by your upload handler) -->
+  <input type="file" id="smsFile" />
 
-      <!-- hidden file input (keeps existing change handler) -->
-      <input type="file" id="smsFile" style="display:none" />
-
-      <span id="smsFileName" class="muted" style="font-size:12px"></span>
-    </div>
-
+  <div style="display:flex;flex-direction:column;gap:6px">
     <div class="muted" style="font-size:12px">To</div>
     <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
-    <textarea id="smsBody" rows="6" placeholder="Type your message..."></textarea>
-
-    <button id="sendSmsBtn" class="btn call" type="button">Send</button>
-
-    <div id="smsError" class="muted" style="color:var(--danger);display:none"></div>
-    <div id="smsSuccess" class="muted" style="color:var(--green);display:none"></div>
   </div>
+
+  <!-- textarea wrapper: plus button is inside here -->
+  <div class="textareaWrap" style="margin-top:8px">
+    <textarea id="smsBody" rows="6" placeholder="Type your message..."></textarea>
+    <button id="smsPlusBtn" class="filePlusBtn" title="Attach file">+</button>
+  </div>
+
+  <!-- small filename label (optional, will be set by existing change handler) -->
+  <span id="smsFileName" class="muted" style="font-size:12px"></span>
+
+  <div style="display:flex;justify-content:flex-end;margin-top:6px">
+    <button id="sendSmsBtn" class="btn call" type="button">Send</button>
+  </div>
+
+  <div id="smsError" class="muted" style="color:var(--danger);display:none;margin-top:6px"></div>
+  <div id="smsSuccess" class="muted" style="color:var(--green);display:none;margin-top:6px"></div>
+</div>
 
 
 
@@ -1767,6 +1810,12 @@ $("smsNewChatBtn").addEventListener("click", handleNewChat);
 $("sendSmsBtn").addEventListener("click", sendSms);
 $("refreshSmsBtn").addEventListener("click", refreshSms);
 $("smsBackBtn").addEventListener("click", closeSmsChat);
+// open hidden file input when + is clicked
+document.getElementById('smsPlusBtn')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('smsFile')?.click();
+});
+
 
 // Handle file selection + upload
 $("smsFile").addEventListener("change", async (e) => {
