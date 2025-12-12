@@ -4,229 +4,516 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Call Bridge — Admin</title>
+
   <style>
-    :root{--bg:#f4f6f9;--card:#fff;--muted:#6b7280;--accent:#2563eb;--green:#10b981;--danger:#ef4444}
-    body{font-family:Inter,Segoe UI,Arial;background:var(--bg);padding:18px}
-    .card{background:var(--card);padding:16px;border-radius:10px;box-shadow:0 8px 24px rgba(2,6,23,0.06);max-width:980px;margin:0 auto}
-    h1{margin:0 0 12px 0}
-    .row{display:flex;gap:8px;flex-wrap:wrap}
-    input,select{padding:8px;border:1px solid #e6e9ef;border-radius:8px}
-    .btn{padding:8px 12px;border-radius:8px;border:none;color:#fff;cursor:pointer}
-    .btn.call{background:var(--accent)} .btn.gray{background:#374151} .btn.hang{background:var(--danger)}
-    .muted{color:var(--muted)}
-    .list{margin-top:12px;max-height:360px;overflow:auto;border-top:1px solid #f3f4f6;padding-top:12px}
-    .userRow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #f3f4f6}
-    .userMeta{font-size:13px}
-    .small{font-size:12px;color:var(--muted)}
-    textarea{min-width:280px}
-    .notice{margin-top:8px;color:var(--muted)}
+    :root{
+      --bg:#f4f6f9; --card:#ffffff; --muted:#6b7280; --accent:#2563eb;
+      --accent-strong:#1e40af; --green:#10b981; --danger:#ef4444; --shadow: 0 10px 30px rgba(2,6,23,0.08)
+    }
+    html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,Segoe UI,Arial;color:#0f172a}
+    .wrap{max-width:1100px;margin:26px auto;padding:18px}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:var(--shadow)}
+    h1{margin:0;font-size:20px}
+    .muted{color:var(--muted);font-size:13px}
+    .row{display:flex;gap:8px;align-items:center}
+    input,select,textarea{padding:8px;border-radius:8px;border:1px solid #e6e9ef;font-size:14px}
+    button.btn{border:0;padding:8px 12px;border-radius:8px;color:#fff;cursor:pointer}
+    .btn.primary{background:var(--accent)}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid #e6e9ef}
+    .btn.gray{background:#374151}
+    .btn.danger{background:var(--danger)}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .controls{display:flex;gap:8px}
+    .search{padding:8px;border-radius:8px;border:1px solid #e6e9ef;min-width:280px}
+    .users{margin-top:12px;border-top:1px dashed #eef2ff;padding-top:12px;max-height:520px;overflow:auto}
+    .userRow{display:flex;justify-content:space-between;gap:12px;padding:12px;border-radius:8px;align-items:center}
+    .userRow + .userRow{margin-top:8px}
+    .uLeft{display:flex;gap:12px;align-items:center;flex:1;min-width:0}
+    .avatar{width:44px;height:44px;border-radius:8px;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent)}
+    .uMeta{min-width:0}
+    .uEmail{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .uSmall{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .actions{display:flex;gap:8px;flex-shrink:0}
+    .pill{padding:6px 8px;border-radius:999px;border:1px solid #f1f5f9;background:#fff;font-size:12px;color:var(--muted)}
+    .center{display:flex;justify-content:center;align-items:center}
+    /* Modal */
+    .modalBack{position:fixed;inset:0;background:rgba(2,6,23,0.45);display:none;z-index:999;align-items:center;justify-content:center}
+    .modal{background:#fff;border-radius:12px;padding:16px;min-width:360px;max-width:760px;box-shadow:0 18px 60px rgba(2,6,23,0.16)}
+    .modalHeader{display:flex;justify-content:space-between;align-items:center}
+    .modalBody{margin-top:12px;max-height:60vh;overflow:auto}
+    .formRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    label{font-size:13px;color:#111827;margin-bottom:6px;display:block}
+    .field{min-width:0;flex:1;display:flex;flex-direction:column}
+    .note{font-size:13px;color:var(--muted);margin-top:8px}
+    .small{font-size:13px;color:var(--muted)}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+    .inline{display:inline-flex;gap:8px;align-items:center}
+    footer.small{margin-top:14px;font-size:12px;color:var(--muted);text-align:center}
+    @media (max-width:880px){
+      .row{flex-direction:column;align-items:stretch}
+      .toolbar{flex-direction:column;align-items:stretch}
+      .controls{justify-content:flex-end}
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Call Bridge — Admin</h1>
-    <div class="muted">Sign in as admin to manage users (uses same backend /login -> token as index.html).</div>
 
-    <h3 style="margin-top:12px">Sign in</h3>
-    <div class="row" style="align-items:center">
-      <input id="admin_login_email" placeholder="Admin email" />
-      <input id="admin_login_password" placeholder="Password" type="password"/>
-      <button id="admin_login_btn" class="btn call">Sign in</button>
-      <button id="admin_logout_btn" class="btn gray" style="display:none">Sign out</button>
+  <div class="wrap">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div>
+          <h1>Call Bridge — Admin</h1>
+          <div class="muted">Admin console — manage users stored in Google Sheets</div>
+        </div>
+
+        <div class="inline">
+          <div id="signed_in_badge" class="pill" style="display:none"></div>
+          <button id="sign_in_btn" class="btn primary">Sign in</button>
+          <button id="sign_out_btn" class="btn ghost" style="display:none">Sign out</button>
+        </div>
+      </div>
+
+      <!-- LOGIN PANEL (shown when not signed in) -->
+      <div id="login_panel" style="margin-top:12px">
+        <div class="row" style="gap:8px">
+          <input id="login_email" placeholder="Admin email" style="min-width:260px" />
+          <input id="login_password" type="password" placeholder="Password" style="min-width:200px" />
+          <div style="display:flex;gap:8px">
+            <button id="login_do" class="btn primary">Login</button>
+            <button id="login_clear" class="btn gray">Clear</button>
+          </div>
+        </div>
+        <div id="login_msg" class="note"></div>
+      </div>
+
+      <!-- ADMIN UI (hidden until logged in) -->
+      <div id="admin_panel" style="display:none; margin-top:14px">
+
+        <div class="topbar">
+          <div class="toolbar">
+            <input id="q" class="search" placeholder="Search email, name, assigned number..." />
+            <div class="small muted" style="margin-left:8px">Tip: click View to inspect a user's full profile; Edit opens a detailed editor</div>
+          </div>
+
+          <div class="controls">
+            <button id="btn_new_user" class="btn primary">New user</button>
+            <button id="btn_refresh" class="btn gray">Refresh</button>
+          </div>
+        </div>
+
+        <div id="users" class="users"></div>
+
+        <footer class="small">Backend: <span id="backend_url"></span></footer>
+      </div>
+
     </div>
-    <div id="admin_login_msg" class="muted small"></div>
+  </div>
 
-    <div id="admin_ui" style="display:none">
-      <hr style="margin:14px 0">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <h3 style="margin:0">Users</h3>
-          <div class="small muted">Create, edit, assign number, change password, delete</div>
-        </div>
-        <div>
-          <button id="admin_refresh_btn" class="btn gray">Refresh</button>
+  <!-- VIEW MODAL -->
+  <div id="view_modal_back" class="modalBack">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalHeader">
+        <div style="font-weight:700" id="view_title">User</div>
+        <div><button id="view_close" class="btn ghost">Close</button></div>
+      </div>
+      <div class="modalBody" id="view_body">
+        <!-- populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT/CREATE MODAL -->
+  <div id="edit_modal_back" class="modalBack">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalHeader">
+        <div style="font-weight:700" id="edit_title">Edit user</div>
+        <div><button id="edit_close" class="btn ghost">Cancel</button></div>
+      </div>
+      <div class="modalBody">
+        <div id="edit_form">
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="field" style="flex:2;min-width:200px">
+              <label for="e_email">Email</label>
+              <input id="e_email" placeholder="user@example.com" />
+            </div>
+            <div class="field" style="flex:1;min-width:160px">
+              <label for="e_role">Role</label>
+              <select id="e_role"><option value="user">user</option><option value="admin">admin</option></select>
+            </div>
+            <div class="field" style="flex:1;min-width:160px">
+              <label for="e_expiry">Expiry (YYYY-MM-DD)</label>
+              <input id="e_expiry" placeholder="2025-12-31" />
+            </div>
+          </div>
+
+          <div class="formRow">
+            <div class="field">
+              <label for="e_display">Display name</label>
+              <input id="e_display" placeholder="Full name" />
+            </div>
+            <div class="field">
+              <label for="e_number">Assigned number (+E.164)</label>
+              <input id="e_number" placeholder="+1803..." />
+            </div>
+            <div class="field">
+              <label for="e_password">Password (leave blank to keep)</label>
+              <input id="e_password" type="password" placeholder="New password" />
+            </div>
+          </div>
+
+          <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+            <button id="edit_delete" class="btn danger" style="display:none">Delete</button>
+            <button id="edit_save" class="btn primary">Save</button>
+          </div>
+
+          <div id="edit_msg" class="note"></div>
         </div>
       </div>
-
-      <div style="margin-top:12px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <input id="u_email" placeholder="Email" style="width:240px"/>
-          <input id="u_password" placeholder="Password (leave blank to keep)" style="width:160px" />
-          <input id="u_display" placeholder="Display name" style="width:200px" />
-          <input id="u_number" placeholder="Assigned number (+...)" style="width:160px" />
-          <input id="u_expiry" placeholder="Expiry YYYY-MM-DD" style="width:140px" />
-          <select id="u_role">
-            <option value="user">user</option>
-            <option value="admin">admin</option>
-          </select>
-          <button id="u_create" class="btn call">Create / Update</button>
-          <button id="u_clear" class="btn gray">Clear</button>
-        </div>
-        <div id="u_msg" class="notice"></div>
-      </div>
-
-      <div class="list" id="users_list"></div>
     </div>
   </div>
 
 <script>
-const API_BASE = location.origin.replace(/\/+$/, "") + "/backend"; // fallback not used if you set API_BASE directly
-// If your backend base URL differs (e.g. https://callbridge.onrender.com), set it here:
+/*
+  Replace BACKEND below with your backend base URL if different.
+  Example: const BACKEND = "http://localhost:5000" or "https://callbridge.onrender.com"
+*/
 const BACKEND = "https://callbridge.onrender.com";
 
-function $(id){ return document.getElementById(id); }
-function setText(id,t){ if($(id)) $(id).innerText = t; }
+document.getElementById("backend_url").innerText = BACKEND;
 
-function getAuthToken(){ return localStorage.getItem("auth_token"); }
-function setAuthToken(t){ if(t) localStorage.setItem("auth_token", t); else localStorage.removeItem("auth_token"); }
-function authHeaders(){ const t = getAuthToken(); return t ? { "Authorization": "Bearer " + t } : {}; }
+const authKey = "auth_token"; // same as index.html
+function authHeaders(){ const t = localStorage.getItem(authKey); return t ? { "Authorization": "Bearer " + t } : {}; }
 
-/* ---------- Login ---------- */
-$("admin_login_btn").addEventListener("click", async () => {
-  setText("admin_login_msg","Signing in...");
-  const email = $("admin_login_email").value.trim();
-  const password = $("admin_login_password").value;
-  if(!email || !password){ setText("admin_login_msg","Email & password required"); return; }
+function el(id){ return document.getElementById(id); }
+function show(elm){ elm.style.display = ""; }
+function hide(elm){ elm.style.display = "none"; }
+
+let usersCache = []; // raw rows from sheet
+
+/* ---------- UI wiring ---------- */
+el("login_do").addEventListener("click", async ()=> {
+  el("login_msg").innerText = "Signing in...";
+  const email = el("login_email").value.trim();
+  const password = el("login_password").value;
+  if(!email || !password){ el("login_msg").innerText = "Email & password required"; return; }
   try{
     const res = await fetch(BACKEND + "/login", {
-      method: "POST",
-      headers: { "Content-Type":"application/json" },
+      method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ email, password })
     });
     const j = await res.json().catch(()=>({}));
-    if(!res.ok){ setText("admin_login_msg", j.error || "Login failed"); return; }
-    if(j.token){ setAuthToken(j.token); localStorage.setItem("user", JSON.stringify(j.user || {})); setText("admin_login_msg","Signed in"); showAdminUI(true); fetchUsers(); }
+    if(!res.ok){ el("login_msg").innerText = j.error || "Login failed"; return; }
+    if(j.token){
+      localStorage.setItem(authKey, j.token);
+      localStorage.setItem("user", JSON.stringify(j.user||{}));
+      el("login_msg").innerText = "Signed in";
+      persistSignedIn(j.user);
+      await loadUsers();
+      showAdminPanel();
+    } else {
+      el("login_msg").innerText = "Login failed";
+    }
   }catch(e){
-    console.error(e); setText("admin_login_msg","Network error");
+    console.error(e);
+    el("login_msg").innerText = "Network error";
   }
 });
 
-$("admin_logout_btn").addEventListener("click", () => {
-  setAuthToken(null);
-  localStorage.removeItem("user");
-  showAdminUI(false);
-  setText("admin_login_msg","Signed out");
+el("login_clear").addEventListener("click", ()=> {
+  el("login_email").value = ""; el("login_password").value = ""; el("login_msg").innerText = "";
 });
 
-function showAdminUI(logged){
-  $("admin_ui").style.display = logged ? "block" : "none";
-  $("admin_logout_btn").style.display = logged ? "inline-block" : "none";
-  $("admin_login_btn").style.display = logged ? "none" : "inline-block";
-}
+el("sign_out_btn").addEventListener("click", ()=> {
+  localStorage.removeItem(authKey);
+  localStorage.removeItem("user");
+  showLoginPanel();
+});
 
-/* keep login state if token present */
-if(getAuthToken()){
-  showAdminUI(true);
-}
+el("sign_in_btn").addEventListener("click", ()=> {
+  // focus email input for convenience
+  showLoginPanel();
+  el("login_email").focus();
+});
 
-/* ---------- Users list & actions ---------- */
-async function fetchUsers(){
-  $("users_list").innerText = "Loading...";
+/* New user */
+el("btn_new_user").addEventListener("click", ()=> openEditModal(null) );
+el("btn_refresh").addEventListener("click", ()=> loadUsers() );
+
+/* Search */
+el("q").addEventListener("input", ()=> renderUsersList() );
+
+/* Modals */
+el("view_close").addEventListener("click", ()=> hide(el("view_modal_back")));
+el("edit_close").addEventListener("click", ()=> hide(el("edit_modal_back")));
+
+el("edit_save").addEventListener("click", async ()=> {
+  const email = el("e_email").value.trim().toLowerCase();
+  if(!email){ el("edit_msg").innerText = "Email is required."; return; }
+  const payload = {
+    email,
+    display_name: el("e_display").value.trim(),
+    assigned_number: el("e_number").value.trim(),
+    expiry_date: el("e_expiry").value.trim(),
+    role: el("e_role").value
+  };
+  const pwd = el("e_password").value;
+  if(pwd) payload.password = pwd;
+
+  // determine if create or update by checking existing usersCache
+  const exists = usersCache.some(u => ((u.Email || u.email || "").toLowerCase() === email));
+  el("edit_msg").innerText = "Saving...";
+  try{
+    let res;
+    if(!exists){
+      // Create -> POST
+      res = await fetch(BACKEND + "/admin/users", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+        body: JSON.stringify(Object.assign({ email: email, password: payload.password || "tempPass123" }, payload))
+      });
+    } else {
+      // Update -> PUT
+      res = await fetch(BACKEND + "/admin/users", {
+        method: "PUT",
+        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+        body: JSON.stringify(payload)
+      });
+    }
+
+    if(!res.ok){
+      const t = await res.text().catch(()=>"");
+      el("edit_msg").innerText = "Save failed: " + (t || res.status);
+      return;
+    }
+
+    el("edit_msg").innerText = exists ? "Updated." : "Created.";
+    // small delay to show message, reload
+    setTimeout(async ()=> {
+      hide(el("edit_modal_back"));
+      clearEditForm();
+      await loadUsers();
+    }, 650);
+  }catch(e){
+    console.error(e);
+    el("edit_msg").innerText = "Network error";
+  }
+});
+
+/* Delete from edit modal */
+el("edit_delete").addEventListener("click", async ()=> {
+  const email = el("e_email").value.trim().toLowerCase();
+  if(!email) return;
+  if(!confirm("Delete user " + email + " ? This cannot be undone.")) return;
   try{
     const res = await fetch(BACKEND + "/admin/users", {
-      method: "GET",
-      headers: Object.assign({ "Content-Type":"application/json" }, authHeaders())
+      method: "DELETE",
+      headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+      body: JSON.stringify({ email })
     });
-    if(!res.ok){ const t = await res.text(); $("users_list").innerText = "Error: " + t; return; }
-    const users = await res.json();
-    renderUsers(users || []);
-  }catch(e){ console.error(e); $("users_list").innerText = "Network error"; }
+    if(!res.ok){ const t = await res.text().catch(()=>""); el("edit_msg").innerText = "Delete failed: " + t; return; }
+    el("edit_msg").innerText = "Deleted.";
+    setTimeout(()=> { hide(el("edit_modal_back")); clearEditForm(); loadUsers(); }, 600);
+  }catch(e){
+    console.error(e);
+    el("edit_msg").innerText = "Network error";
+  }
+});
+
+/* ---------- Load & Render users ---------- */
+function persistSignedIn(user){
+  const email = (user && (user.email || user.Email)) || "";
+  if(email){
+    el("signed_in_badge").innerText = "Signed in: " + email;
+    show(el("signed_in_badge"));
+    show(el("sign_out_btn"));
+    hide(el("sign_in_btn"));
+  }
 }
 
-function renderUsers(users){
-  const out = $("users_list");
-  out.innerHTML = "";
-  if(!users || users.length === 0){ out.innerHTML = "<div class='muted'>No users</div>"; return; }
-  users.forEach(u=>{
-    const div = document.createElement("div");
-    div.className = "userRow";
-    const left = document.createElement("div");
-    left.innerHTML = `<div style="font-weight:700">${u.Email || u.email || ""}</div>
-      <div class="userMeta small muted">${u["Display Name"] || u.display_name || ""} · Assigned: ${u["Assigned Number"] || u.assigned_number || "—"} · Expires: ${u["Expiry Date"] || u.expiry_date || "—"} · Role: ${u.Role || u.role || "user"}</div>`;
-    const right = document.createElement("div");
-    const edit = document.createElement("button"); edit.className="btn gray"; edit.innerText="Edit";
-    const del = document.createElement("button"); del.className="btn hang"; del.innerText="Delete";
-    edit.addEventListener("click", ()=>populateUserForEdit(u));
-    del.addEventListener("click", async ()=>{
-      if(!confirm("Delete "+(u.Email||u.email)+" ?")) return;
+function showAdminPanel(){
+  hide(el("login_panel"));
+  show(el("admin_panel"));
+  show(el("sign_out_btn"));
+  hide(el("sign_in_btn"));
+  el("login_msg").innerText = "";
+}
+
+function showLoginPanel(){
+  hide(el("admin_panel"));
+  show(el("login_panel"));
+  hide(el("sign_out_btn"));
+  show(el("sign_in_btn"));
+  hide(el("signed_in_badge"));
+}
+
+// If token present auto-show admin
+if(localStorage.getItem(authKey)){
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  persistSignedIn(user);
+  showAdminPanel();
+  loadUsers();
+}
+
+/* Fetch users (GET /admin/users) */
+async function loadUsers(){
+  el("users").innerHTML = "<div class='center muted'>Loading users...</div>";
+  try{
+    const res = await fetch(BACKEND + "/admin/users", { method: "GET", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()) });
+    if(!res.ok){
+      const t = await res.text().catch(()=>"");
+      el("users").innerHTML = "<div class='center'>Error loading users: " + t + "</div>";
+      return;
+    }
+    usersCache = await res.json();
+    renderUsersList();
+  }catch(e){
+    console.error(e);
+    el("users").innerHTML = "<div class='center'>Network error</div>";
+  }
+}
+
+function renderUsersList(){
+  const container = el("users");
+  container.innerHTML = "";
+  const q = (el("q").value || "").toLowerCase().trim();
+
+  const filtered = usersCache.filter(u=>{
+    const email = (u.Email || u.email || "").toLowerCase();
+    const name = (u["Display Name"] || u.display_name || "").toLowerCase();
+    const assigned = (u["Assigned Number"] || u.assigned_number || "").toLowerCase();
+    if(!q) return true;
+    return email.includes(q) || name.includes(q) || assigned.includes(q);
+  });
+
+  if(filtered.length === 0){
+    container.innerHTML = "<div class='center muted'>No users found</div>";
+    return;
+  }
+
+  filtered.forEach(u=>{
+    const row = document.createElement("div");
+    row.className = "userRow";
+    // left
+    const left = document.createElement("div"); left.className = "uLeft";
+    const avatar = document.createElement("div"); avatar.className = "avatar"; avatar.innerText = (u["Display Name"] || u.display_name || "").split(" ").map(s=>s[0]).slice(0,2).join("").toUpperCase() || "@";
+    const meta = document.createElement("div"); meta.className = "uMeta";
+    const emailEl = document.createElement("div"); emailEl.className = "uEmail"; emailEl.title = u.Email || u.email || ""; emailEl.innerText = u.Email || u.email || "";
+    const subEl = document.createElement("div"); subEl.className = "uSmall"; subEl.innerText = `${u["Display Name"] || u.display_name || "—"} · ${u["Assigned Number"] || u.assigned_number || "—"} · Expires: ${u["Expiry Date"] || u.expiry_date || "—"} · Role: ${u.Role || u.role || "user"}`;
+    meta.appendChild(emailEl); meta.appendChild(subEl);
+    left.appendChild(avatar); left.appendChild(meta);
+
+    // actions
+    const actions = document.createElement("div"); actions.className = "actions";
+    const btnView = document.createElement("button"); btnView.className = "btn ghost"; btnView.innerText = "View";
+    const btnEdit = document.createElement("button"); btnEdit.className = "btn primary"; btnEdit.innerText = "Edit";
+    const btnDel = document.createElement("button"); btnDel.className = "btn danger"; btnDel.innerText = "Delete";
+
+    btnView.addEventListener("click", ()=> openViewModal(u));
+    btnEdit.addEventListener("click", ()=> openEditModal(u));
+    btnDel.addEventListener("click", async ()=>{
+      if(!confirm("Delete user " + (u.Email||u.email) + " ?")) return;
       try{
-        const res = await fetch(BACKEND + "/admin/users", {
-          method: "DELETE",
-          headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
-          body: JSON.stringify({ email: u.Email || u.email })
-        });
-        if(!res.ok){ const t = await res.text(); alert("Delete failed: " + t); return; }
-        fetchUsers();
+        const resp = await fetch(BACKEND + "/admin/users", { method:"DELETE", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()), body: JSON.stringify({ email: u.Email || u.email }) });
+        if(!resp.ok){ const t = await resp.text().catch(()=>""); alert("Delete failed: " + t); return; }
+        await loadUsers();
       }catch(e){ console.error(e); alert("Network error"); }
     });
-    right.appendChild(edit); right.appendChild(del);
-    div.appendChild(left); div.appendChild(right); out.appendChild(div);
+
+    actions.appendChild(btnView); actions.appendChild(btnEdit); actions.appendChild(btnDel);
+
+    row.appendChild(left); row.appendChild(actions);
+    container.appendChild(row);
   });
 }
 
-function populateUserForEdit(u){
-  $("u_email").value = u.Email || u.email || "";
-  $("u_password").value = "";
-  $("u_display").value = u["Display Name"] || u.display_name || "";
-  $("u_number").value = u["Assigned Number"] || u.assigned_number || "";
-  $("u_expiry").value = u["Expiry Date"] || u.expiry_date || "";
-  $("u_role").value = u.Role || u.role || "user";
-  setText("u_msg", "Loaded user into form. Leave password blank to keep current.");
+/* ---------- View modal ---------- */
+function openViewModal(u){
+  show(el("view_modal_back"));
+  el("view_title").innerText = u.Email || u.email || "User";
+  const body = el("view_body");
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><div class="small">Email</div><div style="font-weight:700">${u.Email || u.email || ""}</div></div>
+      <div><div class="small">Role</div><div style="font-weight:700">${u.Role || u.role || "user"}</div></div>
+
+      <div><div class="small">Display Name</div><div style="font-weight:700">${u["Display Name"] || u.display_name || "—"}</div></div>
+      <div><div class="small">Assigned Number</div><div style="font-weight:700">${u["Assigned Number"] || u.assigned_number || "—"}</div></div>
+
+      <div><div class="small">Expiry</div><div style="font-weight:700">${u["Expiry Date"] || u.expiry_date || "—"}</div></div>
+      <div><div class="small">Password (sheet)</div><div style="font-weight:700">${u.Password || u.password ? "•".repeat(6) : "—"}</div></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="small muted">Full row preview (raw values as in sheet)</div>
+      <pre style="background:#f8fafc;padding:8px;border-radius:8px;margin-top:8px;white-space:pre-wrap;font-size:13px">${JSON.stringify(u, null, 2)}</pre>
+    </div>
+  `;
 }
 
-$("u_clear").addEventListener("click", ()=> {
-  $("u_email").value = ""; $("u_password").value = ""; $("u_display").value = ""; $("u_number").value = ""; $("u_expiry").value = ""; $("u_role").value="user";
-  setText("u_msg", "");
+/* ---------- Edit modal ---------- */
+function openEditModal(u){
+  show(el("edit_modal_back"));
+  el("edit_msg").innerText = "";
+  if(!u){
+    el("edit_title").innerText = "Create new user";
+    el("e_email").value = "";
+    el("e_password").value = "";
+    el("e_display").value = "";
+    el("e_number").value = "";
+    el("e_expiry").value = "";
+    el("e_role").value = "user";
+    hide(el("edit_delete"));
+  } else {
+    el("edit_title").innerText = "Edit user";
+    el("e_email").value = (u.Email || u.email || "");
+    el("e_password").value = "";
+    el("e_display").value = (u["Display Name"] || u.display_name || "");
+    el("e_number").value = (u["Assigned Number"] || u.assigned_number || "");
+    el("e_expiry").value = (u["Expiry Date"] || u.expiry_date || "");
+    el("e_role").value = (u.Role || u.role || "user");
+    show(el("edit_delete"));
+  }
+}
+
+/* Clear form */
+function clearEditForm(){
+  el("e_email").value = ""; el("e_password").value = ""; el("e_display").value = ""; el("e_number").value = ""; el("e_expiry").value = ""; el("e_role").value="user";
+  el("edit_msg").innerText = "";
+}
+
+/* Close modals on backdrop click */
+document.querySelectorAll(".modalBack").forEach(mb => {
+  mb.addEventListener("click", (ev) => {
+    if(ev.target === mb) hide(mb);
+  });
 });
 
-$("u_create").addEventListener("click", async ()=>{
-  setText("u_msg","Working...");
-  const email = $("u_email").value.trim().toLowerCase();
-  if(!email){ setText("u_msg","Email required"); return; }
-  const password = $("u_password").value;
-  const display = $("u_display").value;
-  const number = $("u_number").value;
-  const expiry = $("u_expiry").value;
-  const role = $("u_role").value;
-
-  // Detect if exists by fetching list and checking
-  try{
-    const listRes = await fetch(BACKEND + "/admin/users", { method:"GET", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()) });
-    if(!listRes.ok){ setText("u_msg","Could not read users"); return; }
-    const users = await listRes.json();
-    const exists = (users||[]).some(x => (x.Email || x.email || "").toLowerCase() === email);
-
-    if(!exists){
-      // Create
-      const res = await fetch(BACKEND + "/admin/users", {
-        method: "POST",
-        headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
-        body: JSON.stringify({ email, password, display_name: display, assigned_number: number, expiry_date: expiry, role })
-      });
-      if(res.status === 201){ setText("u_msg","User created"); $("u_password").value = ""; fetchUsers(); }
-      else { const t = await res.text(); setText("u_msg","Create failed: "+t); }
-    } else {
-      // Update
-      const body = { email, display_name: display, assigned_number: number, expiry_date: expiry, role };
-      if(password) body.password = password;
-      const res = await fetch(BACKEND + "/admin/users", {
-        method: "PUT",
-        headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
-        body: JSON.stringify(body)
-      });
-      if(res.ok){ setText("u_msg","User updated"); $("u_password").value = ""; fetchUsers(); }
-      else { const t = await res.text(); setText("u_msg","Update failed: "+t); }
-    }
-  }catch(e){ console.error(e); setText("u_msg","Network error"); }
+/* Keyboard escape closes modals */
+window.addEventListener("keydown", (e) => {
+  if(e.key === "Escape"){
+    hide(el("view_modal_back")); hide(el("edit_modal_back"));
+  }
 });
 
-$("admin_refresh_btn").addEventListener("click", fetchUsers);
+/* ---------- initial helper: if token exists show admin ---------- */
+if(localStorage.getItem(authKey)){
+  const u = JSON.parse(localStorage.getItem("user") || "{}");
+  persistSignedIn(u);
+  showAdminPanel();
+}
 
-/* show saved token if any */
-if(getAuthToken()){
-  setText("admin_login_msg","Signed in (token present)");
-  showAdminUI(true);
-  fetchUsers();
+/* helper to refresh after sign in if user info exists */
+function persistSignedIn(user){
+  const email = (user && (user.email || user.Email)) || "";
+  if(email){
+    el("signed_in_badge").innerText = "Signed in: " + email;
+    show(el("signed_in_badge"));
+  }
+  hide(el("login_panel"));
+  show(el("admin_panel"));
+  show(el("sign_out_btn"));
+  hide(el("sign_in_btn"));
+  loadUsers();
 }
 </script>
 </body>
