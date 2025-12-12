@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Call Bridge — Admin</title>
+  <style>
+    :root{--bg:#f4f6f9;--card:#fff;--muted:#6b7280;--accent:#2563eb;--green:#10b981;--danger:#ef4444}
+    body{font-family:Inter,Segoe UI,Arial;background:var(--bg);padding:18px}
+    .card{background:var(--card);padding:16px;border-radius:10px;box-shadow:0 8px 24px rgba(2,6,23,0.06);max-width:980px;margin:0 auto}
+    h1{margin:0 0 12px 0}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    input,select{padding:8px;border:1px solid #e6e9ef;border-radius:8px}
+    .btn{padding:8px 12px;border-radius:8px;border:none;color:#fff;cursor:pointer}
+    .btn.call{background:var(--accent)} .btn.gray{background:#374151} .btn.hang{background:var(--danger)}
+    .muted{color:var(--muted)}
+    .list{margin-top:12px;max-height:360px;overflow:auto;border-top:1px solid #f3f4f6;padding-top:12px}
+    .userRow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #f3f4f6}
+    .userMeta{font-size:13px}
+    .small{font-size:12px;color:var(--muted)}
+    textarea{min-width:280px}
+    .notice{margin-top:8px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Call Bridge — Admin</h1>
+    <div class="muted">Sign in as admin to manage users (uses same backend /login -> token as index.html).</div>
+
+    <h3 style="margin-top:12px">Sign in</h3>
+    <div class="row" style="align-items:center">
+      <input id="admin_login_email" placeholder="Admin email" />
+      <input id="admin_login_password" placeholder="Password" type="password"/>
+      <button id="admin_login_btn" class="btn call">Sign in</button>
+      <button id="admin_logout_btn" class="btn gray" style="display:none">Sign out</button>
+    </div>
+    <div id="admin_login_msg" class="muted small"></div>
+
+    <div id="admin_ui" style="display:none">
+      <hr style="margin:14px 0">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <h3 style="margin:0">Users</h3>
+          <div class="small muted">Create, edit, assign number, change password, delete</div>
+        </div>
+        <div>
+          <button id="admin_refresh_btn" class="btn gray">Refresh</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="u_email" placeholder="Email" style="width:240px"/>
+          <input id="u_password" placeholder="Password (leave blank to keep)" style="width:160px" />
+          <input id="u_display" placeholder="Display name" style="width:200px" />
+          <input id="u_number" placeholder="Assigned number (+...)" style="width:160px" />
+          <input id="u_expiry" placeholder="Expiry YYYY-MM-DD" style="width:140px" />
+          <select id="u_role">
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+          </select>
+          <button id="u_create" class="btn call">Create / Update</button>
+          <button id="u_clear" class="btn gray">Clear</button>
+        </div>
+        <div id="u_msg" class="notice"></div>
+      </div>
+
+      <div class="list" id="users_list"></div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = location.origin.replace(/\/+$/, "") + "/backend"; // fallback not used if you set API_BASE directly
+// If your backend base URL differs (e.g. https://callbridge.onrender.com), set it here:
+const BACKEND = "https://callbridge.onrender.com";
+
+function $(id){ return document.getElementById(id); }
+function setText(id,t){ if($(id)) $(id).innerText = t; }
+
+function getAuthToken(){ return localStorage.getItem("auth_token"); }
+function setAuthToken(t){ if(t) localStorage.setItem("auth_token", t); else localStorage.removeItem("auth_token"); }
+function authHeaders(){ const t = getAuthToken(); return t ? { "Authorization": "Bearer " + t } : {}; }
+
+/* ---------- Login ---------- */
+$("admin_login_btn").addEventListener("click", async () => {
+  setText("admin_login_msg","Signing in...");
+  const email = $("admin_login_email").value.trim();
+  const password = $("admin_login_password").value;
+  if(!email || !password){ setText("admin_login_msg","Email & password required"); return; }
+  try{
+    const res = await fetch(BACKEND + "/login", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const j = await res.json().catch(()=>({}));
+    if(!res.ok){ setText("admin_login_msg", j.error || "Login failed"); return; }
+    if(j.token){ setAuthToken(j.token); localStorage.setItem("user", JSON.stringify(j.user || {})); setText("admin_login_msg","Signed in"); showAdminUI(true); fetchUsers(); }
+  }catch(e){
+    console.error(e); setText("admin_login_msg","Network error");
+  }
+});
+
+$("admin_logout_btn").addEventListener("click", () => {
+  setAuthToken(null);
+  localStorage.removeItem("user");
+  showAdminUI(false);
+  setText("admin_login_msg","Signed out");
+});
+
+function showAdminUI(logged){
+  $("admin_ui").style.display = logged ? "block" : "none";
+  $("admin_logout_btn").style.display = logged ? "inline-block" : "none";
+  $("admin_login_btn").style.display = logged ? "none" : "inline-block";
+}
+
+/* keep login state if token present */
+if(getAuthToken()){
+  showAdminUI(true);
+}
+
+/* ---------- Users list & actions ---------- */
+async function fetchUsers(){
+  $("users_list").innerText = "Loading...";
+  try{
+    const res = await fetch(BACKEND + "/admin/users", {
+      method: "GET",
+      headers: Object.assign({ "Content-Type":"application/json" }, authHeaders())
+    });
+    if(!res.ok){ const t = await res.text(); $("users_list").innerText = "Error: " + t; return; }
+    const users = await res.json();
+    renderUsers(users || []);
+  }catch(e){ console.error(e); $("users_list").innerText = "Network error"; }
+}
+
+function renderUsers(users){
+  const out = $("users_list");
+  out.innerHTML = "";
+  if(!users || users.length === 0){ out.innerHTML = "<div class='muted'>No users</div>"; return; }
+  users.forEach(u=>{
+    const div = document.createElement("div");
+    div.className = "userRow";
+    const left = document.createElement("div");
+    left.innerHTML = `<div style="font-weight:700">${u.Email || u.email || ""}</div>
+      <div class="userMeta small muted">${u["Display Name"] || u.display_name || ""} · Assigned: ${u["Assigned Number"] || u.assigned_number || "—"} · Expires: ${u["Expiry Date"] || u.expiry_date || "—"} · Role: ${u.Role || u.role || "user"}</div>`;
+    const right = document.createElement("div");
+    const edit = document.createElement("button"); edit.className="btn gray"; edit.innerText="Edit";
+    const del = document.createElement("button"); del.className="btn hang"; del.innerText="Delete";
+    edit.addEventListener("click", ()=>populateUserForEdit(u));
+    del.addEventListener("click", async ()=>{
+      if(!confirm("Delete "+(u.Email||u.email)+" ?")) return;
+      try{
+        const res = await fetch(BACKEND + "/admin/users", {
+          method: "DELETE",
+          headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+          body: JSON.stringify({ email: u.Email || u.email })
+        });
+        if(!res.ok){ const t = await res.text(); alert("Delete failed: " + t); return; }
+        fetchUsers();
+      }catch(e){ console.error(e); alert("Network error"); }
+    });
+    right.appendChild(edit); right.appendChild(del);
+    div.appendChild(left); div.appendChild(right); out.appendChild(div);
+  });
+}
+
+function populateUserForEdit(u){
+  $("u_email").value = u.Email || u.email || "";
+  $("u_password").value = "";
+  $("u_display").value = u["Display Name"] || u.display_name || "";
+  $("u_number").value = u["Assigned Number"] || u.assigned_number || "";
+  $("u_expiry").value = u["Expiry Date"] || u.expiry_date || "";
+  $("u_role").value = u.Role || u.role || "user";
+  setText("u_msg", "Loaded user into form. Leave password blank to keep current.");
+}
+
+$("u_clear").addEventListener("click", ()=> {
+  $("u_email").value = ""; $("u_password").value = ""; $("u_display").value = ""; $("u_number").value = ""; $("u_expiry").value = ""; $("u_role").value="user";
+  setText("u_msg", "");
+});
+
+$("u_create").addEventListener("click", async ()=>{
+  setText("u_msg","Working...");
+  const email = $("u_email").value.trim().toLowerCase();
+  if(!email){ setText("u_msg","Email required"); return; }
+  const password = $("u_password").value;
+  const display = $("u_display").value;
+  const number = $("u_number").value;
+  const expiry = $("u_expiry").value;
+  const role = $("u_role").value;
+
+  // Detect if exists by fetching list and checking
+  try{
+    const listRes = await fetch(BACKEND + "/admin/users", { method:"GET", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()) });
+    if(!listRes.ok){ setText("u_msg","Could not read users"); return; }
+    const users = await listRes.json();
+    const exists = (users||[]).some(x => (x.Email || x.email || "").toLowerCase() === email);
+
+    if(!exists){
+      // Create
+      const res = await fetch(BACKEND + "/admin/users", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+        body: JSON.stringify({ email, password, display_name: display, assigned_number: number, expiry_date: expiry, role })
+      });
+      if(res.status === 201){ setText("u_msg","User created"); $("u_password").value = ""; fetchUsers(); }
+      else { const t = await res.text(); setText("u_msg","Create failed: "+t); }
+    } else {
+      // Update
+      const body = { email, display_name: display, assigned_number: number, expiry_date: expiry, role };
+      if(password) body.password = password;
+      const res = await fetch(BACKEND + "/admin/users", {
+        method: "PUT",
+        headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+        body: JSON.stringify(body)
+      });
+      if(res.ok){ setText("u_msg","User updated"); $("u_password").value = ""; fetchUsers(); }
+      else { const t = await res.text(); setText("u_msg","Update failed: "+t); }
+    }
+  }catch(e){ console.error(e); setText("u_msg","Network error"); }
+});
+
+$("admin_refresh_btn").addEventListener("click", fetchUsers);
+
+/* show saved token if any */
+if(getAuthToken()){
+  setText("admin_login_msg","Signed in (token present)");
+  showAdminUI(true);
+  fetchUsers();
+}
+</script>
+</body>
+</html>
