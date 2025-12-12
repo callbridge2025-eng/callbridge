@@ -36,7 +36,7 @@ def handle_options():
             headers = request.headers["ACCESS_CONTROL_REQUEST_HEADERS"]
         h = resp.headers
         h["Access-Control-Allow-Origin"] = "*"
-        h["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        h["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
         h["Access-Control-Allow-Headers"] = headers or "Authorization, Content-Type"
         return resp
 
@@ -133,7 +133,7 @@ def _https_url(url, req):
 def after_request(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
     return response
 
 
