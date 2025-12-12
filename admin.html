@@ -264,7 +264,7 @@ el("edit_save").addEventListener("click", async ()=> {
   if(pwd) payload.password = pwd;
 
   // determine if create or update by checking existing usersCache
-  const exists = (users || []).some(x => String(x.Email || x.email || "").toLowerCase() === email);
+  const exists = (usersCache || []).some(x => String(x.Email || x.email || "").toLowerCase() === email);
   el("edit_msg").innerText = "Saving...";
   try{
     let res;
@@ -435,55 +435,66 @@ function renderUsersList(){
 }
 
 // Single delegated click handler for view/edit/delete buttons inside #users
-el("users").addEventListener("click", async (ev) => {
-  const btn = ev.target.closest("button[data-action]");
-  if (!btn) return;
-
-  const action = btn.dataset.action;
-  const email = String(btn.dataset.email || "").trim();
-  if (!email) {
-    console.warn("button clicked but no data-email set");
+// Attach delegated handler once the page has loaded (more robust)
+window.addEventListener("load", () => {
+  const usersEl = el("users");
+  if (!usersEl) {
+    console.warn("admin: #users container not found");
     return;
   }
 
-  // find user object from cache
-  const user = (usersCache || []).find(u => String(u.Email || u.email || "").trim().toLowerCase() === email.toLowerCase());
-  // NOTE: for safety, if not found try match ignoring case on different key names
-  if (!user) {
-    console.warn("User not found in cache for email:", email);
-  }
+  usersEl.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-action]");
+    if (!btn) return;
 
-  if (action === "view") {
-    if (user) openViewModal(user);
-    else alert("User not found (cache mismatch). Refreshing list..."), await loadUsers();
-    return;
-  }
+    // DEBUG: log delegated clicks so we know it's firing
+    console.log("admin: delegated button click", btn.dataset.action, btn.dataset.email);
 
-  if (action === "edit") {
-    openEditModal(user || { Email: email }); // if user missing provide basic skeleton
-    return;
-  }
-
-  if (action === "delete") {
-    if (!confirm(`Delete user ${email} ? This cannot be undone.`)) return;
-    try {
-      const resp = await fetch(BACKEND + "/admin/users", {
-        method: "DELETE",
-        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-        body: JSON.stringify({ email })
-      });
-      if (!resp.ok) {
-        const t = await resp.text().catch(()=>"");
-        alert("Delete failed: " + (t || resp.status));
-        return;
-      }
-      await loadUsers();
-    } catch (e) {
-      console.error("Delete error", e);
-      alert("Network error while deleting user");
+    const action = btn.dataset.action;
+    const email = String(btn.dataset.email || "").trim();
+    if (!email) {
+      console.warn("button clicked but no data-email set");
+      return;
     }
-    return;
-  }
+
+    // find user object from cache
+    const user = (usersCache || []).find(u => String(u.Email || u.email || "").trim().toLowerCase() === email.toLowerCase());
+    if (!user) {
+      console.warn("User not found in cache for email:", email);
+    }
+
+    if (action === "view") {
+      if (user) openViewModal(user);
+      else { alert("User not found (cache mismatch). Refreshing list..."); await loadUsers(); }
+      return;
+    }
+
+    if (action === "edit") {
+      openEditModal(user || { Email: email });
+      return;
+    }
+
+    if (action === "delete") {
+      if (!confirm(`Delete user ${email} ? This cannot be undone.`)) return;
+      try {
+        const resp = await fetch(BACKEND + "/admin/users", {
+          method: "DELETE",
+          headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+          body: JSON.stringify({ email })
+        });
+        if (!resp.ok) {
+          const t = await resp.text().catch(()=>"");
+          alert("Delete failed: " + (t || resp.status));
+          return;
+        }
+        await loadUsers();
+      } catch (e) {
+        console.error("Delete error", e);
+        alert("Network error while deleting user");
+      }
+      return;
+    }
+  });
 });
 
 
