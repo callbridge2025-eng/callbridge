@@ -208,6 +208,7 @@ function hide(elm){
 
 
 let usersCache = []; // raw rows from sheet
+let editOriginalEmail = null; // remembers which row we're editing (email key)
 
 /* ---------- UI wiring ---------- */
 el("login_do").addEventListener("click", async ()=> {
@@ -280,6 +281,12 @@ el("edit_save").addEventListener("click", async ()=> {
 
   // determine if create or update by checking existing usersCache
   const exists = (usersCache || []).some(x => String(x.Email || x.email || "").toLowerCase() === email);
+
+  // If editing an existing user, send original_email so backend can find the row to update
+  if (exists && editOriginalEmail) {
+    payload.original_email = editOriginalEmail;
+  }
+
   el("edit_msg").innerText = "Saving...";
   try{
     let res;
@@ -291,7 +298,7 @@ el("edit_save").addEventListener("click", async ()=> {
         body: JSON.stringify(Object.assign({ email: email, password: payload.password || "tempPass123" }, payload))
       });
     } else {
-      // Update -> PUT
+      // Update -> PUT (include original_email so server can update the correct row)
       res = await fetch(BACKEND + "/admin/users", {
         method: "PUT",
         headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
@@ -306,6 +313,9 @@ el("edit_save").addEventListener("click", async ()=> {
     }
 
     el("edit_msg").innerText = exists ? "Updated." : "Created.";
+    // clear stored original email (we'll reload from backend)
+    editOriginalEmail = null;
+
     // small delay to show message, reload
     setTimeout(async ()=> {
       hide(el("edit_modal_back"));
@@ -320,7 +330,8 @@ el("edit_save").addEventListener("click", async ()=> {
 
 /* Delete from edit modal */
 el("edit_delete").addEventListener("click", async ()=> {
-  const email = el("e_email").value.trim().toLowerCase();
+  // prefer the stored original email to identify row; fallback to current input
+  const email = (editOriginalEmail || el("e_email").value || "").trim().toLowerCase();
   if(!email) return;
   if(!confirm("Delete user " + email + " ? This cannot be undone.")) return;
   try{
@@ -331,12 +342,14 @@ el("edit_delete").addEventListener("click", async ()=> {
     });
     if(!res.ok){ const t = await res.text().catch(()=>""); el("edit_msg").innerText = "Delete failed: " + t; return; }
     el("edit_msg").innerText = "Deleted.";
+    editOriginalEmail = null;
     setTimeout(()=> { hide(el("edit_modal_back")); clearEditForm(); loadUsers(); }, 600);
   }catch(e){
     console.error(e);
     el("edit_msg").innerText = "Network error";
   }
 });
+
 
 /* ---------- Load & Render users ---------- */
 function persistSignedIn(user){
@@ -543,6 +556,7 @@ function openEditModal(u){
   show(el("edit_modal_back"));
   el("edit_msg").innerText = "";
   if(!u){
+    editOriginalEmail = null;
     el("edit_title").innerText = "Create new user";
     el("e_email").value = "";
     el("e_password").value = "";
@@ -552,6 +566,8 @@ function openEditModal(u){
     el("e_role").value = "user";
     hide(el("edit_delete"));
   } else {
+    // store the original email so we can identify the row when saving
+    editOriginalEmail = String(u.Email || u.email || "").trim().toLowerCase();
     el("edit_title").innerText = "Edit user";
     el("e_email").value = (u.Email || u.email || "");
     el("e_password").value = "";
@@ -562,6 +578,7 @@ function openEditModal(u){
     show(el("edit_delete"));
   }
 }
+
 
 /* Clear form */
 function clearEditForm(){
