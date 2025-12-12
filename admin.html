@@ -189,8 +189,23 @@ const authKey = "auth_token"; // same as index.html
 function authHeaders(){ const t = localStorage.getItem(authKey); return t ? { "Authorization": "Bearer " + t } : {}; }
 
 function el(id){ return document.getElementById(id); }
-function show(elm){ elm.style.display = ""; }
-function hide(elm){ elm.style.display = "none"; }
+function show(elm){
+  if(!elm) return;
+  // Modal backdrops need flex so they center their contents
+  if (elm.classList && elm.classList.contains && elm.classList.contains("modalBack")) {
+    elm.style.display = "flex";
+    return;
+  }
+  // For other blocks, remove inline display to fall back to CSS / default block behavior
+  elm.style.display = "";
+}
+
+function hide(elm){
+  if(!elm) return;
+  // hide everything via inline none
+  elm.style.display = "none";
+}
+
 
 let usersCache = []; // raw rows from sheet
 
