@@ -180,6 +180,10 @@
 const BACKEND = "https://callbridge.onrender.com";
 
 document.getElementById("backend_url").innerText = BACKEND;
+// Ensure new/refresh buttons have handlers (id'd in the markup)
+document.getElementById("btn_new_user")?.addEventListener("click", ()=> openEditModal(null));
+document.getElementById("btn_refresh")?.addEventListener("click", ()=> loadUsers());
+
 
 const authKey = "auth_token"; // same as index.html
 function authHeaders(){ const t = localStorage.getItem(authKey); return t ? { "Authorization": "Bearer " + t } : {}; }
@@ -377,8 +381,7 @@ function renderUsersList(){
   container.innerHTML = "";
   const q = (el("q").value || "").toLowerCase().trim();
 
-  const filtered = usersCache.filter(u=>{
-    // coerce raw values to strings before lowercasing — avoids TypeError
+  const filtered = (usersCache || []).filter(u=>{
     const email = String(u.Email || u.email || "").toLowerCase();
     const name = String(u["Display Name"] || u.display_name || "").toLowerCase();
     const assigned = String(u["Assigned Number"] || u.assigned_number || "").toLowerCase();
@@ -394,40 +397,95 @@ function renderUsersList(){
   filtered.forEach(u=>{
     const row = document.createElement("div");
     row.className = "userRow";
-    // left
+
+    // left column
     const left = document.createElement("div"); left.className = "uLeft";
     const avatar = document.createElement("div"); avatar.className = "avatar";
-    const initials = String(u["Display Name"] || u.display_name || "").split(" ").map(s=>s[0]).slice(0,2).join("").toUpperCase();
-    avatar.innerText = initials || "@";
+    const initials = String(u["Display Name"] || u.display_name || "").split(" ").map(s=>s[0]||"").slice(0,2).join("").toUpperCase() || "@";
+    avatar.innerText = initials;
     const meta = document.createElement("div"); meta.className = "uMeta";
-    const emailEl = document.createElement("div"); emailEl.className = "uEmail"; emailEl.title = u.Email || u.email || ""; emailEl.innerText = u.Email || u.email || "";
+    const emailVal = u.Email || u.email || "";
+    const emailEl = document.createElement("div"); emailEl.className = "uEmail"; emailEl.title = emailVal; emailEl.innerText = emailVal;
     const subEl = document.createElement("div"); subEl.className = "uSmall"; subEl.innerText = `${u["Display Name"] || u.display_name || "—"} · ${u["Assigned Number"] || u.assigned_number || "—"} · Expires: ${u["Expiry Date"] || u.expiry_date || "—"} · Role: ${u.Role || u.role || "user"}`;
     meta.appendChild(emailEl); meta.appendChild(subEl);
     left.appendChild(avatar); left.appendChild(meta);
 
-    // actions
+    // actions: use data attributes rather than direct listeners
     const actions = document.createElement("div"); actions.className = "actions";
-    const btnView = document.createElement("button"); btnView.className = "btn ghost"; btnView.innerText = "View";
-    const btnEdit = document.createElement("button"); btnEdit.className = "btn primary"; btnEdit.innerText = "Edit";
-    const btnDel = document.createElement("button"); btnDel.className = "btn danger"; btnDel.innerText = "Delete";
+    const makeBtn = (text, kind, actionName) => {
+      const b = document.createElement("button");
+      b.className = `btn ${kind}`;
+      b.innerText = text;
+      // attach data attributes for delegation handler
+      b.dataset.action = actionName;
+      b.dataset.email = String(emailVal);
+      return b;
+    };
 
-    btnView.addEventListener("click", ()=> openViewModal(u));
-    btnEdit.addEventListener("click", ()=> openEditModal(u));
-    btnDel.addEventListener("click", async ()=>{
-      if(!confirm("Delete user " + (u.Email||u.email) + " ?")) return;
-      try{
-        const resp = await fetch(BACKEND + "/admin/users", { method:"DELETE", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()), body: JSON.stringify({ email: u.Email || u.email }) });
-        if(!resp.ok){ const t = await resp.text().catch(()=>""); alert("Delete failed: " + t); return; }
-        await loadUsers();
-      }catch(e){ console.error(e); alert("Network error"); }
-    });
+    const btnView = makeBtn("View", "ghost", "view");
+    const btnEdit = makeBtn("Edit", "primary", "edit");
+    const btnDel  = makeBtn("Delete", "danger", "delete");
 
     actions.appendChild(btnView); actions.appendChild(btnEdit); actions.appendChild(btnDel);
 
-    row.appendChild(left); row.appendChild(actions);
+    row.appendChild(left);
+    row.appendChild(actions);
     container.appendChild(row);
   });
 }
+
+// Single delegated click handler for view/edit/delete buttons inside #users
+el("users").addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("button[data-action]");
+  if (!btn) return;
+
+  const action = btn.dataset.action;
+  const email = String(btn.dataset.email || "").trim();
+  if (!email) {
+    console.warn("button clicked but no data-email set");
+    return;
+  }
+
+  // find user object from cache
+  const user = (usersCache || []).find(u => String(u.Email || u.email || "").trim().toLowerCase() === email.toLowerCase());
+  // NOTE: for safety, if not found try match ignoring case on different key names
+  if (!user) {
+    console.warn("User not found in cache for email:", email);
+  }
+
+  if (action === "view") {
+    if (user) openViewModal(user);
+    else alert("User not found (cache mismatch). Refreshing list..."), await loadUsers();
+    return;
+  }
+
+  if (action === "edit") {
+    openEditModal(user || { Email: email }); // if user missing provide basic skeleton
+    return;
+  }
+
+  if (action === "delete") {
+    if (!confirm(`Delete user ${email} ? This cannot be undone.`)) return;
+    try {
+      const resp = await fetch(BACKEND + "/admin/users", {
+        method: "DELETE",
+        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+        body: JSON.stringify({ email })
+      });
+      if (!resp.ok) {
+        const t = await resp.text().catch(()=>"");
+        alert("Delete failed: " + (t || resp.status));
+        return;
+      }
+      await loadUsers();
+    } catch (e) {
+      console.error("Delete error", e);
+      alert("Network error while deleting user");
+    }
+    return;
+  }
+});
+
 
 
 /* ---------- View modal ---------- */
