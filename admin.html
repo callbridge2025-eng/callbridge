@@ -260,7 +260,7 @@ el("edit_save").addEventListener("click", async ()=> {
   if(pwd) payload.password = pwd;
 
   // determine if create or update by checking existing usersCache
-  const exists = usersCache.some(u => ((u.Email || u.email || "").toLowerCase() === email));
+  const exists = (users || []).some(x => String(x.Email || x.email || "").toLowerCase() === email);
   el("edit_msg").innerText = "Saving...";
   try{
     let res;
@@ -378,9 +378,10 @@ function renderUsersList(){
   const q = (el("q").value || "").toLowerCase().trim();
 
   const filtered = usersCache.filter(u=>{
-    const email = (u.Email || u.email || "").toLowerCase();
-    const name = (u["Display Name"] || u.display_name || "").toLowerCase();
-    const assigned = (u["Assigned Number"] || u.assigned_number || "").toLowerCase();
+    // coerce raw values to strings before lowercasing — avoids TypeError
+    const email = String(u.Email || u.email || "").toLowerCase();
+    const name = String(u["Display Name"] || u.display_name || "").toLowerCase();
+    const assigned = String(u["Assigned Number"] || u.assigned_number || "").toLowerCase();
     if(!q) return true;
     return email.includes(q) || name.includes(q) || assigned.includes(q);
   });
@@ -395,7 +396,9 @@ function renderUsersList(){
     row.className = "userRow";
     // left
     const left = document.createElement("div"); left.className = "uLeft";
-    const avatar = document.createElement("div"); avatar.className = "avatar"; avatar.innerText = (u["Display Name"] || u.display_name || "").split(" ").map(s=>s[0]).slice(0,2).join("").toUpperCase() || "@";
+    const avatar = document.createElement("div"); avatar.className = "avatar";
+    const initials = String(u["Display Name"] || u.display_name || "").split(" ").map(s=>s[0]).slice(0,2).join("").toUpperCase();
+    avatar.innerText = initials || "@";
     const meta = document.createElement("div"); meta.className = "uMeta";
     const emailEl = document.createElement("div"); emailEl.className = "uEmail"; emailEl.title = u.Email || u.email || ""; emailEl.innerText = u.Email || u.email || "";
     const subEl = document.createElement("div"); subEl.className = "uSmall"; subEl.innerText = `${u["Display Name"] || u.display_name || "—"} · ${u["Assigned Number"] || u.assigned_number || "—"} · Expires: ${u["Expiry Date"] || u.expiry_date || "—"} · Role: ${u.Role || u.role || "user"}`;
@@ -425,6 +428,7 @@ function renderUsersList(){
     container.appendChild(row);
   });
 }
+
 
 /* ---------- View modal ---------- */
 function openViewModal(u){
