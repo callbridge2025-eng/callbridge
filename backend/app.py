@@ -217,6 +217,162 @@ def get_twilio_client():
 
 
 
+# ---------------- Admin helpers & routes ----------------
+def is_request_admin(req):
+    """
+    Return True if the request is authenticated as an admin user.
+    Resolves identity from Authorization Bearer token or X-User-Email / email query.
+    """
+    auth_email = auth_from_token(req.headers.get("Authorization", "")) \
+                 or (req.args.get("email") or req.headers.get("X-User-Email") or "").strip().lower()
+    if not auth_email:
+        return False
+    u = find_user_by_email(auth_email)
+    if not u:
+        return False
+    return str(u.get("role") or "").strip().lower() in {"admin", "administrator"}
+
+def _users_headers_map():
+    """
+    Returns (headers, mapping) for Users sheet.
+    mapping: normalized header -> column index (1-based)
+    """
+    all_vals = users_ws.get_all_values()
+    if not all_vals or len(all_vals) == 0:
+        raise RuntimeError("Users sheet missing or empty")
+    headers = all_vals[0]
+    mapping = {}
+    for i, h in enumerate(headers):
+        if h is None:
+            continue
+        mapping[str(h).strip().lower()] = i + 1
+    return headers, mapping
+
+def _find_user_row_index(email):
+    """Return 1-based row index for email in Users sheet or None."""
+    all_vals = users_ws.get_all_values()
+    if not all_vals or len(all_vals) < 2:
+        return None
+    headers = all_vals[0]
+    email_col_idx = None
+    for i, h in enumerate(headers):
+        if str(h).strip().lower() == "email":
+            email_col_idx = i
+            break
+    if email_col_idx is None:
+        return None
+    for row_idx, row in enumerate(all_vals[1:], start=2):
+        cell_email = (row[email_col_idx] if len(row) > email_col_idx else "") or ""
+        if str(cell_email).strip().lower() == str(email).strip().lower():
+            return row_idx
+    return None
+
+@app.route("/admin/users", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+def admin_users():
+    """
+    Admin-only endpoint for CRUD on Users sheet.
+    GET    -> return all users (for admin dashboard)
+    POST   -> create a user (body: email,password,display_name,assigned_number,expiry_date,role)
+    PUT    -> update a user (body: email + any fields to update)
+    DELETE -> delete a user (body or query: email)
+    """
+    if request.method == "OPTIONS":
+        return _ok_cors()
+    try:
+        if not is_request_admin(request):
+            return jsonify({"error": "admin only"}), 403
+
+        if request.method == "GET":
+            rows = users_ws.get_all_records()
+            return jsonify(rows), 200
+
+        data = request.get_json(force=True) if request.data else {}
+        # CREATE
+        if request.method == "POST":
+            email = (data.get("email") or "").strip().lower()
+            password = data.get("password") or ""
+            display_name = data.get("display_name") or data.get("displayName") or ""
+            assigned_number = to_e164(data.get("assigned_number") or data.get("assignedNumber") or "")
+            expiry_date = data.get("expiry_date") or data.get("expiryDate") or ""
+            role = data.get("role") or "user"
+
+            if not email or not password:
+                return jsonify({"error": "email and password required"}), 400
+
+            if find_user_by_email(email):
+                return jsonify({"error": "User already exists"}), 409
+
+            headers, mapping = _users_headers_map()
+            row = [""] * len(headers)
+            def set_by_key(k, v):
+                idx = mapping.get(k.lower())
+                if idx:
+                    row[idx - 1] = v
+
+            set_by_key("email", email)
+            set_by_key("password", password)
+            set_by_key("display name", display_name)
+            set_by_key("assigned number", assigned_number)
+            set_by_key("expiry date", expiry_date)
+            set_by_key("role", role)
+
+            users_ws.append_row(row, value_input_option='RAW')
+            return jsonify({"success": True}), 201
+
+        # UPDATE
+        if request.method == "PUT":
+            email = (data.get("email") or "").strip().lower()
+            if not email:
+                return jsonify({"error": "email required"}), 400
+            row_idx = _find_user_row_index(email)
+            if not row_idx:
+                return jsonify({"error": "User not found"}), 404
+
+            headers, mapping = _users_headers_map()
+            changes = {}
+            allowed_keys = {
+                "password": data.get("password"),
+                "display name": data.get("display_name") or data.get("displayName"),
+                "assigned number": to_e164(data.get("assigned_number") or data.get("assignedNumber") or ""),
+                "expiry date": data.get("expiry_date") or data.get("expiryDate"),
+                "role": data.get("role")
+            }
+            for k, v in allowed_keys.items():
+                if v is not None and v != "":
+                    col_idx = mapping.get(k)
+                    if col_idx:
+                        users_ws.update_cell(row_idx, col_idx, str(v))
+                        changes[k] = v
+
+            return jsonify({"success": True, "updated": changes}), 200
+
+        # DELETE
+        if request.method == "DELETE":
+            email = (data.get("email") if isinstance(data, dict) else None) or request.args.get("email")
+            if not email:
+                return jsonify({"error": "email required"}), 400
+            row_idx = _find_user_row_index(email)
+            if not row_idx:
+                return jsonify({"error": "User not found"}), 404
+            try:
+                users_ws.delete_rows(row_idx)
+            except Exception:
+                try:
+                    users_ws.delete_row(row_idx)
+                except Exception:
+                    # fallback: blank the row
+                    headers, mapping = _users_headers_map()
+                    blank = [""] * len(headers)
+                    users_ws.update(f"A{row_idx}", [blank])
+            return jsonify({"success": True}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Internal server error"}), 500
+
+
+
+
 # ---------------- Routes ----------------
 @app.route("/", methods=["GET"])
 def home():
