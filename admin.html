@@ -269,6 +269,7 @@ el("edit_close").addEventListener("click", ()=> hide(el("edit_modal_back")));
 el("edit_save").addEventListener("click", async ()=> {
   const email = el("e_email").value.trim().toLowerCase();
   if(!email){ el("edit_msg").innerText = "Email is required."; return; }
+
   const payload = {
     email,
     display_name: el("e_display").value.trim(),
@@ -276,55 +277,115 @@ el("edit_save").addEventListener("click", async ()=> {
     expiry_date: el("e_expiry").value.trim(),
     role: el("e_role").value
   };
+
   const pwd = el("e_password").value;
-  if(pwd) payload.password = pwd;
+  // If no password entered, attempt to preserve existing sheet password (if present)
+  if (pwd) {
+    payload.password = pwd;
+  } else {
+    // find existing user in cache and reuse its Password field if available
+    const existing = (usersCache || []).find(u => String(u.Email || u.email || "").trim().toLowerCase() === (editOriginalEmail || email));
+    if (existing) {
+      const existingPw = existing.Password || existing.password || "";
+      if (existingPw) payload.password = existingPw;
+    }
+  }
 
   // determine if create or update by checking existing usersCache
   const exists = (usersCache || []).some(x => String(x.Email || x.email || "").toLowerCase() === email);
 
-  // If editing an existing user, send original_email so backend can find the row to update
-  if (exists && editOriginalEmail) {
-    payload.original_email = editOriginalEmail;
-  }
-
   el("edit_msg").innerText = "Saving...";
-  try{
-    let res;
-    if(!exists){
-      // Create -> POST
-      res = await fetch(BACKEND + "/admin/users", {
+
+  try {
+    // If editing an existing user (we have original email) -> prefer delete+create to ensure single row
+    if (exists && editOriginalEmail) {
+      // If original email differs from current email, we must delete the original row first
+      const orig = editOriginalEmail;
+
+      // 1) Delete original row
+      const delResp = await fetch(BACKEND + "/admin/users", {
+        method: "DELETE",
+        headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+        body: JSON.stringify({ email: orig })
+      });
+
+      if (!delResp.ok) {
+        // if delete failed, try a direct PUT as a fallback before giving up
+        console.warn("Delete of original failed, trying PUT as fallback", await delResp.text().catch(()=>""));
+        const putResp = await fetch(BACKEND + "/admin/users", {
+          method: "PUT",
+          headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+          body: JSON.stringify(Object.assign({}, payload, { original_email: editOriginalEmail }))
+        });
+        if (!putResp.ok) {
+          const t = await putResp.text().catch(()=>"");
+          el("edit_msg").innerText = "Update failed: " + (t || putResp.status);
+          return;
+        } else {
+          el("edit_msg").innerText = "Updated (via fallback PUT).";
+          editOriginalEmail = null;
+          setTimeout(async ()=> { hide(el("edit_modal_back")); clearEditForm(); await loadUsers(); }, 650);
+          return;
+        }
+      }
+
+      // 2) Create new row with updated payload (POST)
+      const createResp = await fetch(BACKEND + "/admin/users", {
         method: "POST",
         headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
         body: JSON.stringify(Object.assign({ email: email, password: payload.password || "tempPass123" }, payload))
       });
-    } else {
-      // Update -> PUT (include original_email so server can update the correct row)
-      res = await fetch(BACKEND + "/admin/users", {
-        method: "PUT",
-        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-        body: JSON.stringify(payload)
-      });
+
+      if (!createResp.ok) {
+        const t = await createResp.text().catch(()=>"");
+        el("edit_msg").innerText = "Re-create failed after delete: " + (t || createResp.status);
+        return;
+      }
+
+      el("edit_msg").innerText = "Updated.";
+      editOriginalEmail = null;
+      setTimeout(async ()=> { hide(el("edit_modal_back")); clearEditForm(); await loadUsers(); }, 650);
+      return;
     }
 
-    if(!res.ok){
+    // Not editing an existing row (create)
+    if (!exists) {
+      const res = await fetch(BACKEND + "/admin/users", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+        body: JSON.stringify(Object.assign({ email: email, password: payload.password || "tempPass123" }, payload))
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(()=>"");
+        el("edit_msg").innerText = "Create failed: " + (t || res.status);
+        return;
+      }
+      el("edit_msg").innerText = "Created.";
+      setTimeout(async ()=> { hide(el("edit_modal_back")); clearEditForm(); await loadUsers(); }, 650);
+      return;
+    }
+
+    // exists === true but editOriginalEmail is not set (we're saving but didn't open edit modal properly)
+    // fallback to PUT (server may support update)
+    const res = await fetch(BACKEND + "/admin/users", {
+      method: "PUT",
+      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify(Object.assign({}, payload, { original_email: email }))
+    });
+    if (!res.ok) {
       const t = await res.text().catch(()=>"");
       el("edit_msg").innerText = "Save failed: " + (t || res.status);
       return;
     }
-
-    el("edit_msg").innerText = exists ? "Updated." : "Created.";
-    // clear stored original email (we'll reload from backend)
+    el("edit_msg").innerText = "Updated.";
     editOriginalEmail = null;
+    setTimeout(async ()=> { hide(el("edit_modal_back")); clearEditForm(); await loadUsers(); }, 650);
+    return;
 
-    // small delay to show message, reload
-    setTimeout(async ()=> {
-      hide(el("edit_modal_back"));
-      clearEditForm();
-      await loadUsers();
-    }, 650);
-  }catch(e){
-    console.error(e);
+  } catch (e) {
+    console.error("Save error", e);
     el("edit_msg").innerText = "Network error";
+    return;
   }
 });
 
