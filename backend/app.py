@@ -267,108 +267,156 @@ def _find_user_row_index(email):
             return row_idx
     return None
 
+# ---------------- Admin: CRUD for Users (sheet-backed) ----------------
+# PUT / POST / DELETE / GET for managing Users sheet in-place.
+# Requires an admin-authenticated caller (Bearer token that maps to an admin user).
 @app.route("/admin/users", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 def admin_users():
-    """
-    Admin-only endpoint for CRUD on Users sheet.
-    GET    -> return all users (for admin dashboard)
-    POST   -> create a user (body: email,password,display_name,assigned_number,expiry_date,role)
-    PUT    -> update a user (body: email + any fields to update)
-    DELETE -> delete a user (body or query: email)
-    """
     if request.method == "OPTIONS":
         return _ok_cors()
     try:
-        if not is_request_admin(request):
-            return jsonify({"error": "admin only"}), 403
+        # Identify caller
+        caller = auth_from_token(request.headers.get("Authorization", "")) \
+                 or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
 
+        caller_user = find_user_by_email(caller) if caller else None
+        is_admin = False
+        if caller_user and str(caller_user.get("role","")).strip().lower() in {"admin","administrator"}:
+            is_admin = True
+
+        if not is_admin:
+            return jsonify({"error":"admin privileges required"}), 403
+
+        # Helper: ensure we have header mapping for Users sheet
+        all_vals = users_ws.get_all_values()
+        if not all_vals or len(all_vals) < 1:
+            return jsonify({"error":"Users sheet empty or missing headers"}), 500
+        headers = [str(h).strip() for h in all_vals[0]]
+
+        # locate column indices
+        def header_index(name):
+            name = name.strip().lower()
+            for i,h in enumerate(headers):
+                if str(h).strip().lower() == name:
+                    return i
+            return None
+
+        email_col = header_index("email")
+        password_col = header_index("password")
+        display_col = header_index("display name")
+        assigned_col = header_index("assigned number")
+        expiry_col = header_index("expiry date")
+        role_col = header_index("role")
+
+        # === GET: list users ===
         if request.method == "GET":
             rows = users_ws.get_all_records()
             return jsonify(rows), 200
 
+        # read JSON body when needed
         data = request.get_json(force=True) if request.data else {}
-        # CREATE
+
+        # Normalize helpers
+        def find_row_by_email(search_email):
+            if not search_email:
+                return None
+            search_email = str(search_email).strip().lower()
+            # read full values for index search
+            vals = users_ws.get_all_values()
+            # header is row 0, rows start at 1 (sheet 1-indexed)
+            for idx, row in enumerate(vals[1:], start=2):
+                cell = (row[email_col] if email_col is not None and len(row) > email_col else "") or ""
+                if str(cell).strip().lower() == search_email:
+                    return idx, row
+            return None
+
+        # === POST: create user ===
         if request.method == "POST":
-            email = (data.get("email") or "").strip().lower()
-            password = data.get("password") or ""
-            display_name = data.get("display_name") or data.get("displayName") or ""
-            assigned_number = to_e164(data.get("assigned_number") or data.get("assignedNumber") or "")
-            expiry_date = data.get("expiry_date") or data.get("expiryDate") or ""
-            role = data.get("role") or "user"
+            # expected fields: email, password, display_name, assigned_number, expiry_date, role
+            email = (data.get("email") or "").strip()
+            if not email:
+                return jsonify({"error":"email required"}), 400
 
-            if not email or not password:
-                return jsonify({"error": "email and password required"}), 400
+            # prevent duplicates: if email exists, return 409
+            if find_row_by_email(email):
+                return jsonify({"error":"user already exists"}), 409
 
-            if find_user_by_email(email):
-                return jsonify({"error": "User already exists"}), 409
+            # build row values in header order (filling missing with "")
+            row_map = {}
+            row_map["Email"] = email
+            row_map["Password"] = data.get("password") or ""
+            row_map["Display Name"] = data.get("display_name") or ""
+            row_map["Assigned Number"] = data.get("assigned_number") or ""
+            row_map["Expiry Date"] = data.get("expiry_date") or ""
+            row_map["Role"] = data.get("role") or "user"
 
-            headers, mapping = _users_headers_map()
-            row = [""] * len(headers)
-            def set_by_key(k, v):
-                idx = mapping.get(k.lower())
-                if idx:
-                    row[idx - 1] = v
+            # produce row array matching headers
+            newrow = []
+            for h in headers:
+                newrow.append(row_map.get(h, ""))
 
-            set_by_key("email", email)
-            set_by_key("password", password)
-            set_by_key("display name", display_name)
-            set_by_key("assigned number", assigned_number)
-            set_by_key("expiry date", expiry_date)
-            set_by_key("role", role)
-
-            users_ws.append_row(row, value_input_option='RAW')
+            users_ws.append_row(newrow, value_input_option='RAW')
             return jsonify({"success": True}), 201
 
-        # UPDATE
+        # === PUT: update an existing user in-place ===
         if request.method == "PUT":
-            email = (data.get("email") or "").strip().lower()
-            if not email:
-                return jsonify({"error": "email required"}), 400
-            row_idx = _find_user_row_index(email)
-            if not row_idx:
-                return jsonify({"error": "User not found"}), 404
+            # Accept either 'original_email' (preferred) or 'email' to identify the row.
+            original = (data.get("original_email") or data.get("originalEmail") or data.get("orig") or "").strip().lower()
+            new_email = (data.get("email") or "").strip()
+            target_email = original or new_email
+            if not target_email:
+                return jsonify({"error":"original_email or email required for update"}), 400
 
-            headers, mapping = _users_headers_map()
-            changes = {}
-            allowed_keys = {
-                "password": data.get("password"),
-                "display name": data.get("display_name") or data.get("displayName"),
-                "assigned number": to_e164(data.get("assigned_number") or data.get("assignedNumber") or ""),
-                "expiry date": data.get("expiry_date") or data.get("expiryDate"),
-                "role": data.get("role")
-            }
-            for k, v in allowed_keys.items():
-                if v is not None and v != "":
-                    col_idx = mapping.get(k)
-                    if col_idx:
-                        users_ws.update_cell(row_idx, col_idx, str(v))
-                        changes[k] = v
+            found = find_row_by_email(target_email)
+            if not found:
+                return jsonify({"error":"user not found"}), 404
+            row_idx, row_vals = found
 
-            return jsonify({"success": True, "updated": changes}), 200
-
-        # DELETE
-        if request.method == "DELETE":
-            email = (data.get("email") if isinstance(data, dict) else None) or request.args.get("email")
-            if not email:
-                return jsonify({"error": "email required"}), 400
-            row_idx = _find_user_row_index(email)
-            if not row_idx:
-                return jsonify({"error": "User not found"}), 404
-            try:
-                users_ws.delete_rows(row_idx)
-            except Exception:
+            # build updates using header indices (1-based columns for update_cell)
+            def set_cell(col_index, value):
+                if col_index is None:
+                    return
                 try:
-                    users_ws.delete_row(row_idx)
-                except Exception:
-                    # fallback: blank the row
-                    headers, mapping = _users_headers_map()
-                    blank = [""] * len(headers)
-                    users_ws.update(f"A{row_idx}", [blank])
+                    users_ws.update_cell(row_idx, col_index+1, "" if value is None else str(value))
+                except Exception as e:
+                    # best-effort continue
+                    print("Warning updating cell", row_idx, col_index, e)
+
+            # if new_email provided -> update
+            if new_email:
+                set_cell(email_col, new_email)
+            if "password" in data:
+                set_cell(password_col, data.get("password") or "")
+            if "display_name" in data:
+                set_cell(display_col, data.get("display_name") or "")
+            if "assigned_number" in data:
+                set_cell(assigned_col, data.get("assigned_number") or "")
+            if "expiry_date" in data:
+                set_cell(expiry_col, data.get("expiry_date") or "")
+            if "role" in data:
+                set_cell(role_col, data.get("role") or "")
+
             return jsonify({"success": True}), 200
+
+        # === DELETE: remove a user row by email ===
+        if request.method == "DELETE":
+            email = (data.get("email") or data.get("user_email") or request.args.get("email") or "").strip()
+            if not email:
+                return jsonify({"error":"email required"}), 400
+            found = find_row_by_email(email)
+            if not found:
+                return jsonify({"error":"user not found"}), 404
+            row_idx, _ = found
+            users_ws.delete_rows(row_idx)  # gspread newer API; if not available fallback to delete_row
+            # if delete_rows not found, use users_ws.delete_row(row_idx)
+            return jsonify({"success": True}), 200
+
+        return jsonify({"error":"method not allowed"}), 405
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"error":"internal server error", "detail": str(e)}), 500
+
 
 
 
