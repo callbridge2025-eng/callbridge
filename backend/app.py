@@ -522,47 +522,50 @@ def change_password():
 def get_calls():
     if request.method == "OPTIONS":
         return _ok_cors()
+
     try:
-        # 1) Try Bearer token -> email (works when TOKENS has the entry)
+        # 🔒 STEP 1: Resolve identity ONLY from Bearer token
         auth_email = auth_from_token(request.headers.get("Authorization", ""))
 
-        # 2) Fallbacks for when the dyno restarted and TOKENS is empty
         if not auth_email:
-            # allow passing email via query or header as a fallback
-            auth_email = (request.args.get("email") or
-                          request.headers.get("X-User-Email") or "").strip().lower()
+            # 🚫 No token → no data (prevents leakage)
+            return jsonify([]), 200
 
-        if not auth_email:
-            # no identity -> return empty list (keeps UI clean) instead of 401
-            return jsonify([])
+        auth_email = auth_email.strip().lower()
 
-        # Admins can see all, others only their own rows
+        # 🔒 STEP 2: Load viewer + role
         viewer = find_user_by_email(auth_email)
-        is_admin = False
-        if viewer and str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}:
-            is_admin = True
+        if not viewer:
+            return jsonify([]), 200
 
+        is_admin = str(viewer.get("role", "")).strip().lower() in {"admin", "administrator"}
+
+        # 🔒 STEP 3: Read call logs
         rows = calls_ws.get_all_records()
         calls = []
+
         for r in rows:
-            row = {
-                "created_at": r.get("Timestamp") or r.get("timestamp") or None,
-                "from_number": r.get("From") or r.get("From Number") or r.get("from"),
-                "to_number": r.get("To") or r.get("To Number") or r.get("to"),
-                "duration": r.get("Duration") or r.get("duration") or 0,
-                "user_email": r.get("User Email") or r.get("User") or r.get("user_email"),
-                "call_type": r.get("Call Type") or r.get("call_type"),
-                "status": r.get("Notes") or r.get("Notes / Status") or r.get("status"),
+            row_email = (r.get("User Email") or r.get("User") or "").strip().lower()
 
-}
+            # 🔐 FILTER: admin sees all, user sees ONLY their rows
+            if not is_admin and row_email != auth_email:
+                continue
 
+            calls.append({
+                "created_at": r.get("Timestamp") or r.get("timestamp"),
+                "from_number": r.get("From") or r.get("From Number"),
+                "to_number": r.get("To") or r.get("To Number"),
+                "duration": _coerce_int(r.get("Duration"), 0),
+                "user_email": row_email,
+                "call_type": r.get("Call Type"),
+                "status": r.get("Notes") or r.get("Notes / Status"),
+            })
 
-            if is_admin or (str(row.get("user_email") or "").strip().lower() == auth_email):
-                calls.append(row)
+        # newest first
+        calls.reverse()
+        return jsonify(calls), 200
 
-        calls = list(reversed(calls))
-        return jsonify(calls)
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
 
