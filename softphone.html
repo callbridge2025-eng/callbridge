@@ -2131,6 +2131,7 @@ async function init(){
       console.log("🔁 Auto-login from localStorage");
       currentUser = savedUser;
       await loadProfile();
+      await loadWalletBalance();   // ✅ REQUIRED
       await refreshHistory();
 
       // Try to obtain mic once (may be blocked); if blocked, init on first user gesture
