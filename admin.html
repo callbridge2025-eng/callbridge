@@ -632,7 +632,7 @@ function renderWalletTopups(rows){
   }
 
   pending.forEach((r, idx) => {
-    const rowIndex = idx + 2; // +2 because sheet header + 1-based index
+  
 
     const div = document.createElement("div");
     div.className = "userRow";
@@ -662,8 +662,9 @@ function renderWalletTopups(rows){
     reject.className = "btn danger";
     reject.innerText = "Reject";
 
-    approve.onclick = () => decideWalletTopup(rowIndex, "approve");
-    reject.onclick  = () => decideWalletTopup(rowIndex, "reject");
+    approve.onclick = () => decideWalletTopup(r._row, "approve");
+    reject.onclick  = () => decideWalletTopup(r._row, "reject");
+
 
     actions.appendChild(approve);
     actions.appendChild(reject);
