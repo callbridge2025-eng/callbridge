@@ -645,6 +645,17 @@
       <div class="profile-row"><div class="muted">Assigned Number</div><div id="pNumber">Loading...</div></div>
       <div class="profile-row"><div class="muted">Status</div><div id="pStatus">Loading...</div></div>
       <div class="profile-row"><div class="muted">Valid Until</div><div id="pExpiry">Loading...</div></div>
+      <div class="profile-row">
+  <div class="muted">Wallet Balance</div>
+  <div id="walletBalance">Loading...</div>
+</div>
+
+<div style="margin-top:12px">
+  <button id="walletTopupBtn" class="btn call" style="width:100%">
+    💰 Top Up Wallet
+  </button>
+</div>
+
       <div style="margin-top:14px"><button id="logoutBtn" class="btn hang" style="width:100%">Logout</button></div>
       <div style="margin-top:8px"><button id="changePwdBtn" class="btn gray" style="width:100%">Change Password</button></div>
 
@@ -732,7 +743,41 @@
       <div id="changeSuccess" class="muted" style="color:var(--green);margin-top:10px;display:none"></div>
     </div>
   </div>
-  
+
+<!-- Wallet Topup Modal -->
+<div id="walletModal" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10002;align-items:center;justify-content:center">
+  <div class="modalCard" style="width:360px;text-align:left">
+
+    <div style="font-weight:700;font-size:18px">Top Up Wallet (USDT)</div>
+    <div class="muted" style="margin-top:6px">
+      Send USDT to the address below and submit details for approval.
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="muted">USDT Wallet Address</div>
+      <div id="usdtAddress" style="font-weight:700;word-break:break-all">
+        YOUR_USDT_ADDRESS_HERE
+      </div>
+    </div>
+
+    <div style="margin-top:10px;text-align:center">
+      <img id="usdtQr" style="width:160px;height:160px" />
+    </div>
+
+    <input id="topupAmount" type="number" placeholder="Amount (USDT)" style="width:100%;margin-top:10px" />
+    <input id="topupTxid" placeholder="Transaction ID / Hash" style="width:100%;margin-top:8px" />
+
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button id="topupSubmitBtn" class="btn call" style="flex:1">I Have Paid</button>
+      <button id="topupCancelBtn" class="btn gray" style="flex:1">Cancel</button>
+    </div>
+
+    <div id="topupError" class="muted" style="color:var(--danger);display:none;margin-top:8px"></div>
+    <div id="topupSuccess" class="muted" style="color:var(--green);display:none;margin-top:8px"></div>
+
+  </div>
+</div>
+
 
   <!-- Ringtone (tiny silent audio placeholder that browsers allow to preload) -->
   <audio id="ringtoneAudio" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" preload="auto"></audio>
@@ -740,6 +785,7 @@
 <script>
 /* ================= CONFIG ================= */
 const API_BASE = "https://callbridge.onrender.com";
+const USDT_ADDRESS = "YOUR_USDT_ADDRESS_HERE"; // replace with your real USDT address
 
 /* small helpers */
 const $ = id => document.getElementById(id);
@@ -1835,6 +1881,9 @@ $("answerBtn").addEventListener("click", answerIncoming);
 $("declineBtn").addEventListener("click", declineIncoming);
 $("logoutBtn").addEventListener("click", async ()=>{ await performLogout(); });
 $("speakerBtn").addEventListener("click", toggleSpeaker);
+$("walletTopupBtn").addEventListener("click", openWalletModal);
+$("topupCancelBtn").addEventListener("click", closeWalletModal);
+$("topupSubmitBtn").addEventListener("click", submitWalletTopup);
 // SMS
 $("smsNewChatBtn").addEventListener("click", handleNewChat);
 $("sendSmsBtn").addEventListener("click", sendSms);
@@ -1996,9 +2045,81 @@ async function postLoginInit(){
     await refreshHistory();
     await refreshSms();
     await refreshVoicemails();
+    await loadWalletBalance();
     startHistoryPolling();
   }catch(e){ console.error("postLoginInit error", e); }
 }
+
+async function loadWalletBalance(){
+  try{
+    if(!currentUser) return;
+    const emailQS = currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/wallet${emailQS}`, {
+      headers: Object.assign({}, authHeaders())
+    });
+    const json = await res.json();
+    $("walletBalance").innerText = `${(json.balance || 0).toFixed(2)} USDT`;
+  }catch(e){
+    console.error("wallet load error", e);
+    $("walletBalance").innerText = "0.00 USDT";
+  }
+}
+
+function openWalletModal(){
+  $("topupError").style.display = "none";
+  $("topupSuccess").style.display = "none";
+  $("topupAmount").value = "";
+  $("topupTxid").value = "";
+
+  $("usdtAddress").innerText = USDT_ADDRESS;
+  $("usdtQr").src =
+    "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
+    encodeURIComponent(USDT_ADDRESS);
+
+  $("walletModal").style.display = "flex";
+}
+
+function closeWalletModal(){
+  $("walletModal").style.display = "none";
+}
+
+async function submitWalletTopup(){
+  $("topupError").style.display = "none";
+  $("topupSuccess").style.display = "none";
+
+  const amount = parseFloat($("topupAmount").value);
+  const txid = $("topupTxid").value.trim();
+
+  if(!amount || amount <= 0 || !txid){
+    $("topupError").innerText = "Enter valid amount and transaction ID.";
+    $("topupError").style.display = "block";
+    return;
+  }
+
+  try{
+    const emailQS = currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/wallet/topup${emailQS}`, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+      body: JSON.stringify({ amount, txid })
+    });
+
+    if(!res.ok){
+      $("topupError").innerText = "Submission failed";
+      $("topupError").style.display = "block";
+      return;
+    }
+
+    $("topupSuccess").innerText = "Submitted! Awaiting admin approval.";
+    $("topupSuccess").style.display = "block";
+
+    setTimeout(closeWalletModal, 1200);
+  }catch(e){
+    $("topupError").innerText = "Network error";
+    $("topupError").style.display = "block";
+  }
+}
+
 
 
 /* ---------- app init (auto-login) ---------- */
