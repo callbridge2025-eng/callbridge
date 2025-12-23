@@ -1404,7 +1404,16 @@ def wallet_topup():
 def admin_wallet_topups():
     if not is_request_admin(request):
         return jsonify({"error":"admin only"}), 403
-    return jsonify(wallet_topups_ws.get_all_records())
+
+    rows = wallet_topups_ws.get_all_records()
+    enriched = []
+
+    for i, r in enumerate(rows, start=2):  # start=2 → header row skipped
+        r["_row"] = i                      # 👈 real Google Sheet row number
+        enriched.append(r)
+
+    return jsonify(enriched)
+
 
 
 
