@@ -61,6 +61,8 @@ try:
     calls_ws = sh.worksheet("CallLogs")
     sms_ws = sh.worksheet("SMSLogs")
     voicemails_ws = sh.worksheet("Voicemails")
+    wallets_ws = sh.worksheet("Wallets")
+    wallet_topups_ws = sh.worksheet("WalletTopups")
 except Exception as e:
     print("Error initializing Google Sheets:", e)
     raise
@@ -214,6 +216,38 @@ def get_twilio_client():
     if not account_sid or not auth_token:
         raise RuntimeError("Twilio SMS credentials missing (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN).")
     return Client(account_sid, auth_token)
+
+
+
+def get_wallet_balance(email):
+    if not email:
+        return 0.0
+    rows = wallets_ws.get_all_records()
+    for r in rows:
+        if str(r.get("Email","")).strip().lower() == email.lower():
+            try:
+                return float(r.get("Balance", 0))
+            except:
+                return 0.0
+    return 0.0
+
+def ensure_wallet_row(email):
+    rows = wallets_ws.get_all_records()
+    for r in rows:
+        if str(r.get("Email","")).strip().lower() == email.lower():
+            return
+    wallets_ws.append_row([email, "0"], value_input_option="RAW")
+
+def set_wallet_balance(email, new_balance):
+    all_vals = wallets_ws.get_all_values()
+    headers = all_vals[0]
+    email_col = headers.index("Email")
+    bal_col = headers.index("Balance")
+    for idx, row in enumerate(all_vals[1:], start=2):
+        if row[email_col].strip().lower() == email.lower():
+            wallets_ws.update_cell(idx, bal_col+1, str(round(new_balance, 2)))
+            return
+
 
 
 
@@ -1325,6 +1359,86 @@ def sms_twilio_media():
         print("sms_tl_media exception:", e, traceback.format_exc())
         return "Server error", 500
 
+
+
+@app.route("/wallet", methods=["GET"])
+def get_wallet():
+    auth_email = auth_from_token(request.headers.get("Authorization","")) \
+                 or (request.args.get("email") or "").strip().lower()
+    if not auth_email:
+        return jsonify({"balance": 0})
+
+    ensure_wallet_row(auth_email)
+    bal = get_wallet_balance(auth_email)
+    return jsonify({"balance": bal})
+
+
+
+@app.route("/wallet/topup", methods=["POST"])
+def wallet_topup():
+    auth_email = auth_from_token(request.headers.get("Authorization","")) \
+                 or (request.args.get("email") or "").strip().lower()
+
+    data = request.get_json(force=True)
+    amount = float(data.get("amount", 0))
+    txid = str(data.get("txid","")).strip()
+
+    if not auth_email or amount <= 0 or not txid:
+        return jsonify({"error": "Invalid request"}), 400
+
+    wallet_topups_ws.append_row([
+        time.strftime("%Y-%m-%d %H:%M:%S"),
+        auth_email,
+        amount,
+        txid,
+        "pending",
+        ""
+    ], value_input_option="RAW")
+
+    return jsonify({"success": True})
+
+
+
+
+@app.route("/admin/wallet-topups", methods=["GET"])
+def admin_wallet_topups():
+    if not is_request_admin(request):
+        return jsonify({"error":"admin only"}), 403
+    return jsonify(wallet_topups_ws.get_all_records())
+
+
+
+@app.route("/admin/wallet-topups/decision", methods=["POST"])
+def wallet_topup_decision():
+    if not is_request_admin(request):
+        return jsonify({"error":"admin only"}), 403
+
+    data = request.get_json(force=True)
+    row_index = int(data.get("row_index"))
+    action = data.get("action")
+
+    if action not in ("approve","reject"):
+        return jsonify({"error":"Invalid action"}), 400
+
+    all_vals = wallet_topups_ws.get_all_values()
+    row = all_vals[row_index-1]
+
+    status = row[4]
+    if status != "pending":
+        return jsonify({"error":"Already processed"}), 400
+
+    email = row[1]
+    amount = float(row[2])
+
+    if action == "approve":
+        ensure_wallet_row(email)
+        bal = get_wallet_balance(email)
+        set_wallet_balance(email, bal + amount)
+        wallet_topups_ws.update_cell(row_index, 5, "approved")
+    else:
+        wallet_topups_ws.update_cell(row_index, 5, "rejected")
+
+    return jsonify({"success": True})
 
 
 
