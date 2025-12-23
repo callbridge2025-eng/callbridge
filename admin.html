@@ -103,6 +103,15 @@
 
         <div id="users" class="users"></div>
 
+<hr style="margin:16px 0;border:none;border-top:1px dashed #e5e7eb">
+
+<h3 style="margin:0 0 8px 0">💰 Wallet Top-Ups</h3>
+<div class="muted" style="margin-bottom:8px">
+  Pending USDT top-up requests from users
+</div>
+
+<div id="wallet_topups" class="users"></div>
+
         <footer class="small">Backend: <span id="backend_url"></span></footer>
       </div>
 
@@ -426,6 +435,7 @@ function persistSignedIn(user){
 function showAdminPanel(){
   hide(el("login_panel"));
   show(el("admin_panel"));
+  loadWalletTopups();
   show(el("sign_out_btn"));
   hide(el("sign_in_btn"));
   el("login_msg").innerText = "";
@@ -445,6 +455,7 @@ if(localStorage.getItem(authKey)){
   persistSignedIn(user);
   showAdminPanel();
   loadUsers();
+  loadWalletTopups();
 }
 
 /* Fetch users (GET /admin/users) */
@@ -586,6 +597,104 @@ window.addEventListener("load", () => {
   });
 });
 
+async function loadWalletTopups(){
+  const box = el("wallet_topups");
+  box.innerHTML = "<div class='center muted'>Loading wallet top-ups...</div>";
+
+  try{
+    const res = await fetch(BACKEND + "/admin/wallet-topups", {
+      method: "GET",
+      headers: Object.assign({}, authHeaders())
+    });
+
+    if(!res.ok){
+      box.innerHTML = "<div class='center'>Failed to load wallet top-ups</div>";
+      return;
+    }
+
+    const rows = await res.json();
+    renderWalletTopups(rows);
+  }catch(e){
+    console.error("wallet topups error", e);
+    box.innerHTML = "<div class='center'>Network error</div>";
+  }
+}
+
+function renderWalletTopups(rows){
+  const box = el("wallet_topups");
+  box.innerHTML = "";
+
+  const pending = (rows || []).filter(r => String(r.Status || r.status) === "pending");
+
+  if(pending.length === 0){
+    box.innerHTML = "<div class='center muted'>No pending top-ups</div>";
+    return;
+  }
+
+  pending.forEach((r, idx) => {
+    const rowIndex = idx + 2; // +2 because sheet header + 1-based index
+
+    const div = document.createElement("div");
+    div.className = "userRow";
+
+    const left = document.createElement("div");
+    left.className = "uLeft";
+    left.innerHTML = `
+      <div class="avatar">💵</div>
+      <div class="uMeta">
+        <div class="uEmail">${r.Email}</div>
+        <div class="uSmall">
+          Amount: <b>${r.Amount} USDT</b> ·
+          TXID: <span style="font-family:monospace">${r.TXID}</span> ·
+          ${r.Timestamp}
+        </div>
+      </div>
+    `;
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const approve = document.createElement("button");
+    approve.className = "btn primary";
+    approve.innerText = "Approve";
+
+    const reject = document.createElement("button");
+    reject.className = "btn danger";
+    reject.innerText = "Reject";
+
+    approve.onclick = () => decideWalletTopup(rowIndex, "approve");
+    reject.onclick  = () => decideWalletTopup(rowIndex, "reject");
+
+    actions.appendChild(approve);
+    actions.appendChild(reject);
+
+    div.appendChild(left);
+    div.appendChild(actions);
+    box.appendChild(div);
+  });
+}
+async function decideWalletTopup(row_index, action){
+  if(!confirm(`Are you sure you want to ${action} this top-up?`)) return;
+
+  try{
+    const res = await fetch(BACKEND + "/admin/wallet-topups/decision", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+      body: JSON.stringify({ row_index, action })
+    });
+
+    if(!res.ok){
+      alert("Action failed");
+      return;
+    }
+
+    loadWalletTopups();
+    loadUsers(); // refresh balances indirectly
+  }catch(e){
+    console.error(e);
+    alert("Network error");
+  }
+}
 
 
 /* ---------- View modal ---------- */
