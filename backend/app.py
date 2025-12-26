@@ -509,9 +509,9 @@ def get_calls():
     try:
         auth_email, viewer = require_auth_email(request)
 
-        # 🚫 Not authenticated
-        if not auth_email:
-            return jsonify([]), 401
+if not auth_email or not viewer:
+    return jsonify([]), 401
+
 
         # Admin check
         is_admin = str(viewer.get("role", "")).strip().lower() in {
@@ -551,10 +551,14 @@ def save_call():
         return _ok_cors()
     try:
         # prefer authed email; fall back to explicit email on request if needed
-        auth_email = auth_from_token(request.headers.get("Authorization", "")) \
-                     or (request.args.get("email") or request.headers.get("X-User-Email") or "").strip().lower()
+                # 🔐 STRICT AUTH: user identity ONLY from Bearer token
+        auth_email = auth_from_token(request.headers.get("Authorization", ""))
+
+        if not auth_email:
+            return jsonify({"error": "Unauthorized"}), 401
 
         data = request.get_json(force=True)
+
         timestamp = data.get("created_at") or data.get("timestamp") or time.strftime("%Y-%m-%d %H:%M:%S")
         from_num = data.get("from") or data.get("from_number") or ""
         to_num = data.get("to") or data.get("to_number") or ""
@@ -562,8 +566,9 @@ def save_call():
         call_type = data.get("call_type") or ""
         notes = data.get("status") or data.get("notes") or ""
 
-        # always bind to the resolved email if present; otherwise use provided
-        user_email = auth_email or data.get("user_email") or data.get("user_id") or data.get("user") or ""
+        # 🔒 DO NOT TRUST REQUEST BODY
+        user_email = auth_email
+
 
         # normalize phone numbers and save RAW to keep '+'
         from_num_e164 = to_e164(from_num)
