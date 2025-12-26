@@ -1257,10 +1257,17 @@ async function refreshHistory(){
       headers: Object.assign({}, authHeaders())
     });
 
-    if(!res.ok){
-      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
-      return;
-    }
+    if (res.status === 401) {
+  console.warn("Session expired. Logging out.");
+  await performLogout();
+  return;
+}
+
+if (!res.ok) {
+  $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
+  return;
+}
+
     const data = await res.json();
     if(!Array.isArray(data) || data.length===0){
       $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
@@ -1993,7 +2000,6 @@ async function postLoginInit(){
   try{
     await loadProfile();
     await initTwilioDevice(); // will call safeInitTwilioDevice internally
-    await refreshHistory();
     await refreshSms();
     await refreshVoicemails();
     startHistoryPolling();
@@ -2010,7 +2016,6 @@ async function init(){
       console.log("🔁 Auto-login from localStorage");
       currentUser = savedUser;
       await loadProfile();
-      await refreshHistory();
 
       // Try to obtain mic once (may be blocked); if blocked, init on first user gesture
       try{
