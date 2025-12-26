@@ -129,6 +129,23 @@ def _https_url(url, req):
 
 
 
+def require_auth_email(req):
+    """
+    Resolve authenticated email strictly from Bearer token.
+    Returns (email, user_dict) or (None, None)
+    """
+    email = auth_from_token(req.headers.get("Authorization", ""))
+    if not email:
+        return None, None
+
+    user = find_user_by_email(email)
+    if not user:
+        return None, None
+
+    return email.lower(), user
+
+
+
 @app.after_request
 def after_request(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
