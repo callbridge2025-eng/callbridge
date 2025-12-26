@@ -1,0 +1,2060 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Call Bridge — Tech Talk Titans</title>
+
+  <!-- Twilio Voice SDK v2 (blocking load so window.Twilio is available) -->
+  <script src="https://unpkg.com/@twilio/voice-sdk@2.16.0/dist/twilio.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f4f6f9; --card:#ffffff; --muted:#6b7280; --accent:#2563eb; --green:#10b981;
+      --danger:#ef4444; --shadow: 0 8px 30px rgba(2,6,23,0.08);
+    }
+    #smsBody {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  max-height: 140px;    /* limit how tall the composer grows */
+  min-height: 48px;     /* initial visible size */
+  overflow: auto;       /* scroll inside textarea when content exceeds */
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #e6e9ef;
+  font-size: 14px;
+}
+    *{box-sizing:border-box;font-family:Inter,Segoe UI,Arial;}
+    html,body{height:100%;margin:0;background:var(--bg)}
+    body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;padding:18px}
+
+   
+/* Make panel a column flex container and prevent whole-panel scrolling */
+.panel{
+  background:var(--card);
+  border-radius:12px;
+  padding:18px;
+  box-shadow:var(--shadow);
+  height:calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* important: don't let the whole panel scroll */
+}
+
+/* --- Panels: make inner areas scrollable only --- */
+/* Call history area: let the list take remaining space and scroll */
+#middle {
+  /* keep existing padding/header; make content stretch */
+  display: flex;
+  flex-direction: column;
+}
+#historyList {
+  margin-top: 12px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0; /* allow flex children to overflow properly */
+  padding-right: 6px; /* give space for scrollbar */
+}
+
+/* SMS panel layout adjustments */
+#right {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Keep the top tabs and header fixed; sms layout should fill remaining space */
+#smsTab {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0; /* crucial for children overflow to work in flexbox */
+}
+
+/* Make smsLayout fill area and let its child panes manage their own scrolling */
+.smsLayout {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+/* Threads list (left column) — scroll independently */
+.smsThreads {
+  width: 38%;
+  min-width: 150px;
+  border-right: 1px solid #e5e7eb;
+  padding-right: 8px;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Chat pane (right) — column that keeps header fixed, messages scroll, composer sticky */
+.smsThreadPane {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0; /* IMPORTANT */
+}
+
+/* Header area (top of chat) stays natural height */
+#smsThreadHeader { flex: 0 0 auto; }
+
+/* Messages area takes remaining vertical space and scrolls */
+#smsThreadMessages {
+  flex: 1 1 auto;
+  min-height: 0; /* IMPORTANT for overflow in flex */
+  overflow-y: auto;
+  padding: 8px 4px;
+  background: #f9fafb;
+  border-radius: 10px;
+  margin-top: 8px;
+}
+
+/* Composer stays visible — sticky to bottom of chat pane */
+.threadComposer {
+  flex: 0 0 auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.98));
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Make sure the textarea and send button are visible and sized properly */
+#smsBody {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  max-height: 140px;
+  min-height: 48px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #e6e9ef;
+  font-size: 14px;
+}
+
+/* Ensure chat pane back button row doesn't grow and push composer away */
+#smsChatPane > div:first-child {
+  flex: 0 0 auto;
+}
+
+/* Minor spacing so Send button doesn't get cut on small heights */
+.threadComposer .btn.call {
+  align-self: flex-end;
+  margin-top: 6px;
+}
+
+/* compact + attach button */
+.attachBtn {
+  padding: 6px 10px;
+  font-size: 18px;
+  line-height: 1;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+/* --- replace native file chooser with + inside the textarea --- */
+#smsFile { display: none; } /* keep input in DOM but hidden */
+
+.textareaWrap {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Plus button inside bottom-right of textarea */
+.filePlusBtn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: 0 6px 12px rgba(37,99,235,0.15);
+  z-index: 4;
+}
+
+/* make space so the plus doesn't overlap the text content */
+.textareaWrap textarea {
+  padding-right: 48px; /* room for the + button */
+}
+
+/* small filename label under composer (optional) */
+#smsFileName { font-size: 12px; color: var(--muted); margin-top: 6px; display:block; }
+
+
+    
+  h2{margin:0 0 8px 0}
+    .muted{color:var(--muted);font-size:13px}
+
+    /* Left - Dialpad / Active Call */
+    /* Left panel: allow scroll inside when content gets tall */
+#left{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+
+  /* IMPORTANT for scrolling */
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Make the dialpad area scrollable when needed */
+#dialpadArea{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  width: 100%;
+  flex: 1 1 auto;       /* take available space */
+  min-height: 0;        /* allow shrinking */
+  overflow-y: auto;     /* enables scroll */
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 12px; /* avoid content touching bottom */
+}
+
+/* Active call controls stay fixed-height */
+#activeArea{
+  flex: 0 0 auto;
+}
+
+    #callerNumber { font-weight:700; color:#111827; }
+    input#dialInput { width:220px;padding:8px;border-radius:8px;border:1px solid #e6e9ef;font-size:16px }
+
+    .key-row{display:flex;gap:8px;margin-top:8px}
+    .key{width:64px;height:64px;border-radius:10px;border:1px solid #e6e9ef;background:#fafbff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+    .key.primary{background:var(--accent);color:#fff;border:none}
+
+    .controls{display:flex;gap:10px;margin-top:12px}
+    .btn{padding:10px 14px;border-radius:10px;border:none;cursor:pointer;color:#fff}
+    .btn.call{background:var(--green)} .btn.hang{background:var(--danger)} .btn.gray{background:#374151}
+
+    /* active call controls */
+    #activeArea{display:none;flex-direction:column;align-items:center;gap:8px}
+    #waveWrap{display:flex;gap:6px;align-items:flex-end;height:40px}
+
+    /* middle - history */
+    #historyList{display:flex;flex-direction:column;gap:10px}
+    .history-item{padding:10px;border-radius:10px;border:1px solid #eef2ff;background:#fff;display:flex;justify-content:space-between;align-items:center}
+    .badge{padding:6px 8px;border-radius:999px;background:#f1f5f9;font-size:12px;color:var(--muted)}
+
+    /* right - profile */
+    .profile-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #f3f4f6}
+
+    /* incoming modal */
+    #incomingModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:9999;align-items:center;justify-content:center}
+    .modalCard{background:white;padding:22px;border-radius:12px;width:360px;text-align:center;box-shadow:0 12px 40px rgba(2,6,23,0.12)}
+    .modalBtns{display:flex;gap:12px;justify-content:center;margin-top:12px}
+
+    @keyframes pulse {
+      0%{transform:scale(0.95);opacity:0.8}50%{transform:scale(1.08);opacity:1}100%{transform:scale(0.95);opacity:0.8}
+    }
+
+    .tabBtn{
+  flex:1;
+  padding:8px 10px;
+  border-radius:999px;
+  border:1px solid #e5e7eb;
+  background:#f9fafb;
+  font-size:13px;
+  cursor:pointer;
+}
+.tabBtn.active{
+  background:var(--accent);
+  color:#fff;
+  border-color:var(--accent);
+}
+
+    .ringDot{width:72px;height:72px;border-radius:50%;background:var(--green);margin:10px auto;animation:pulse 1.2s infinite}
+    @media (max-width: 900px){
+  html, body { height: 100%; overflow: hidden; }
+  /* Turn the main page into a horizontal strip */
+  body{
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    padding: 0;                 /* remove outer padding for full-bleed pages */
+    overflow-x: auto;           /* enable horizontal scroll */
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; /* smooth on Android/iOS */
+    background: var(--bg);
+  }
+  /* Each panel becomes a full-screen “page” */
+  .panel{
+    min-width: 100vw;           /* full viewport width */
+    height: 100vh;              /* full viewport height */
+    border-radius: 0;           /* flat edges for full-bleed */
+    box-shadow: none;           /* optional: remove shadow for app-like feel */
+    scroll-snap-align: start;   /* snap each page to the left edge */
+    padding: 16px;              /* inner padding */
+  }
+}
+
+/* --- Chat-style SMS UI --- */
+.smsLayout{
+  display:flex;
+  gap:12px;
+  margin-top:10px;
+  align-items:stretch;
+}
+
+.smsThreads{
+  width:38%;
+  min-width:150px;
+  border-right:1px solid #e5e7eb;
+  padding-right:8px;
+  max-height:360px;
+  overflow-y:auto;
+}
+
+.smsLayout.list-only .smsThreads {
+  width: 100%;
+  max-width: none;
+  border-right: none;
+  padding-right: 0;
+}
+
+.smsThreadPane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 36px); /* keep inside your .panel vertical space */
+  min-height: 0; /* IMPORTANT: allows children to collapse and scroll properly */
+}
+
+#smsThreadHeader{
+  font-size:13px;
+  font-weight:600;
+  padding-bottom:4px;
+  border-bottom:1px solid #e5e7eb;
+}
+
+.threadMessages{
+  flex:1;
+  overflow-y:auto;
+  padding:8px 4px;
+  background:#f9fafb;
+  border-radius:10px;
+  margin-top:8px;
+}
+
+.smsBubble{
+  max-width:80%;
+  padding:6px 9px;
+  border-radius:10px;
+  margin-bottom:6px;
+  font-size:13px;
+  line-height:1.3;
+}
+
+.smsBubble.me{
+  margin-left:auto;
+  background:var(--accent);
+  color:#fff;
+  border-bottom-right-radius:3px;
+}
+
+.smsBubble.them{
+  margin-right:auto;
+  background:#e5e7eb;
+  border-bottom-left-radius:3px;
+}
+
+.smsBubbleTime{
+  font-size:10px;
+  opacity:0.7;
+  margin-top:2px;
+}
+
+.threadsList .threadItem{
+  padding:7px 6px;
+  border-radius:8px;
+  margin-bottom:4px;
+  cursor:pointer;
+}
+
+.threadItem.active{
+  background:#e5edff;
+}
+
+.threadItemTitle{
+  font-size:13px;
+  font-weight:600;
+}
+
+.threadItemSnippet{
+  font-size:12px;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.threadComposer{
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;    /* 🚀 prevents chats from shrinking */
+  padding-bottom: 6px;
+}
+
+/* Make messages scroll independently */
+#smsThreadMessages {
+  flex: 1 1 auto;           /* take remaining space */
+  min-height: 0;            /* IMPORTANT for proper overflow in flex children */
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: #f9f9fb;
+  border-radius: 10px;
+  margin-top: 8px;
+}
+
+/* Keep composer fixed at the bottom */
+.threadComposer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 6px 0;
+  margin-top: 8px;
+  background: transparent;
+  border-top: 1px solid #e5e7eb;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
+    /* Login modal overrides (keeps the same card style) */
+    #loginModal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10000;align-items:center;justify-content:center}
+    #loginModal .modalCard { width:360px;text-align:left; }
+    #loginModal input { width:100%; padding:10px; border-radius:8px; border:1px solid #e6e9ef; margin-top:8px; }
+  </style>
+</head>
+<body>
+
+  <!-- LEFT: Dialpad / Active Call -->
+  <div id="left" class="panel">
+    <div style="width:100%;display:flex;justify-content:space-between;align-items:center">
+      <h2>Call Bridge</h2>
+      <div class="muted">Tech Talk Titans</div>
+    </div>
+
+
+    <div style="text-align:center">
+      <div class="muted">Your Virtual Number</div>
+      <div id="callerNumber">Loading...</div>
+    </div>
+
+    <!-- Dialpad -->
+    <div id="dialpadArea" style="display:flex;flex-direction:column;align-items:center;margin-top:6px">
+      <input id="dialInput" type="tel" inputmode="tel" placeholder="+1..." />
+      <div style="margin-top:12px">
+        <div class="key-row">
+          <button class="key" data-key="1">1</button>
+          <button class="key" data-key="2">2</button>
+          <button class="key" data-key="3">3</button>
+        </div>
+        <div class="key-row">
+          <button class="key" data-key="4">4</button>
+          <button class="key" data-key="5">5</button>
+          <button class="key" data-key="6">6</button>
+        </div>
+        <div class="key-row">
+          <button class="key" data-key="7">7</button>
+          <button class="key" data-key="8">8</button>
+          <button class="key" data-key="9">9</button>
+        </div>
+        <div class="key-row">
+          <button class="key" data-key="+">+</button>
+          <button class="key" data-key="0">0</button>
+          <button class="key" data-key="#">#</button>
+        </div>
+      </div>
+
+      <div class="controls" style="margin-top:12px">
+        <button id="startCallBtn" class="btn call">📞 Call</button>
+      </div>
+    </div>
+
+    <!-- Active call area -->
+    <div id="activeArea">
+      <div id="activeLabel" style="font-weight:700">In Call</div>
+      <div id="callTimer" class="muted">00:00</div>
+      <div id="waveWrap"></div>
+     <div class="controls" style="margin-top:10px">
+  <button id="muteBtn" class="btn gray">Mute</button>
+  <button id="holdBtn" class="btn gray">Hold</button>
+  <button id="speakerBtn" class="btn gray">Speaker On</button>
+  <button id="hangupBtn" class="btn hang" style="display:none">✖ Hangup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MIDDLE: Call History -->
+  <div id="middle" class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>Call History</h2>
+      <div class="muted">Latest</div>
+    </div>
+
+    <div id="historyList" style="margin-top:12px">
+      <div class="muted">Loading call history...</div>
+    </div>
+  </div>
+
+    <!-- RIGHT: SMS / Voicemails / Profile -->
+  <div id="right" class="panel">
+    <!-- Tab buttons -->
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="tabBtn active" data-tab="sms">SMS</button>
+      <button class="tabBtn" data-tab="voicemails">Voicemails</button>
+      <button class="tabBtn" data-tab="profile">My Profile</button>
+    </div>
+
+  
+        <!-- SMS TAB -->
+    <div id="smsTab">
+      <h2>SMS</h2>
+      <div class="muted" style="font-size:13px;margin-top:4px">
+        Tap a conversation on the left or start a new chat below.
+      </div>
+
+      <div id="smsLayout" class="smsLayout list-only">
+
+  <!-- LEFT: conversation list -->
+  <div id="smsThreadsPane" class="smsThreads">
+  <!-- Top row: title + New Message + refresh -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <span class="muted" style="font-size:12px">Conversations</span>
+
+    <div style="display:flex;gap:6px;align-items:center">
+      <button
+        id="smsNewChatBtn"
+        class="btn call"
+        style="padding:4px 8px;font-size:11px"
+        type="button"
+      >
+        ➕ New Message
+      </button>
+
+      <button
+        id="refreshSmsBtn"
+        class="btn gray"
+        style="padding:4px 8px;font-size:11px"
+        type="button"
+      >
+        ⟳
+      </button>
+    </div>
+  </div>
+
+  <!-- Conversation list below -->
+  <div id="smsThreadsList" class="threadsList">
+    <div class="muted" style="font-size:12px">No messages yet</div>
+  </div>
+</div>
+
+  
+  <!-- RIGHT: chat view (hidden until opened) -->
+<div id="smsChatPane" class="smsThreadPane" style="display:none">
+
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <button
+      id="smsBackBtn"
+      class="btn gray"
+      type="button"
+      style="padding:4px 8px;font-size:11px"
+    >
+      ← Back
+    </button>
+    <div id="smsThreadHeader" class="threadHeader muted"></div>
+  </div>
+
+    <div id="smsThreadMessages" class="threadMessages"></div>
+
+    <div class="threadComposer">
+  <!-- Hidden native file input (still used by your upload handler) -->
+  <input type="file" id="smsFile" />
+
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <div class="muted" style="font-size:12px">To</div>
+    <input id="smsTo" type="tel" inputmode="tel" placeholder="+1..." />
+  </div>
+
+  <!-- textarea wrapper: plus button is inside here -->
+  <div class="textareaWrap" style="margin-top:8px">
+    <textarea id="smsBody" rows="6" placeholder="Type your message..."></textarea>
+    <button id="smsPlusBtn" class="filePlusBtn" title="Attach file">+</button>
+  </div>
+
+  <!-- small filename label (optional, will be set by existing change handler) -->
+  <span id="smsFileName" class="muted" style="font-size:12px"></span>
+
+  <div style="display:flex;justify-content:flex-end;margin-top:6px">
+    <button id="sendSmsBtn" class="btn call" type="button">Send</button>
+  </div>
+
+  <div id="smsError" class="muted" style="color:var(--danger);display:none;margin-top:6px"></div>
+  <div id="smsSuccess" class="muted" style="color:var(--green);display:none;margin-top:6px"></div>
+</div>
+
+
+
+</div> <!-- end smsChatPane -->
+
+</div> <!-- end smsLayout -->
+
+</div> <!-- end smsTab -->
+
+
+    <!-- VOICEMAILS TAB -->
+    <div id="voicemailsTab" style="display:none">
+      <h2>Voicemails</h2>
+      <div id="vmList" style="margin-top:12px">
+        <div class="muted">No voicemails yet</div>
+      </div>
+    </div>
+
+    <!-- PROFILE TAB -->
+    <div id="profileTab" style="display:none">
+      <h2>My Profile</h2>
+      <div class="profile-row"><div class="muted">Email</div><div id="pEmail">Loading...</div></div>
+      <div class="profile-row"><div class="muted">Assigned Number</div><div id="pNumber">Loading...</div></div>
+      <div class="profile-row"><div class="muted">Status</div><div id="pStatus">Loading...</div></div>
+      <div class="profile-row"><div class="muted">Valid Until</div><div id="pExpiry">Loading...</div></div>
+      <div style="margin-top:14px"><button id="logoutBtn" class="btn hang" style="width:100%">Logout</button></div>
+      <div style="margin-top:8px"><button id="changePwdBtn" class="btn gray" style="width:100%">Change Password</button></div>
+
+      <div style="margin-top:12px;font-size:13px;text-align:center;color:var(--muted)">
+        <div style="font-weight:600;color:#111827">Contact Support</div>
+        <div>📞 +1(803)346-6904</div>
+        <div>
+          📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
+            callbridge.2025@gmail.com
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Incoming Call Modal -->
+  <div id="incomingModal" style="display:none;align-items:center;justify-content:center" >
+    <div class="modalCard">
+      <div style="font-weight:700;font-size:18px">Incoming Call</div>
+      <div id="incomingFrom" class="muted" style="margin-top:6px">From: —</div>
+      <div class="ringDot"></div>
+      <div class="modalBtns">
+        <button id="answerBtn" class="btn call">Answer</button>
+        <button id="declineBtn" class="btn hang">Decline</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login Modal -->
+  <div id="loginModal" style="display:none;align-items:center;justify-content:center">
+    <div class="modalCard">
+      <div style="font-weight:700;font-size:18px">Sign in</div>
+      <div class="muted" style="margin-top:6px">Sign in with the email & password assigned to you.</div>
+      <input id="loginEmail" placeholder="Email" type="email" />
+      <input id="loginPassword" placeholder="Password" type="password" />
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button id="loginBtn" class="btn call" style="flex:1" type="button">Login</button>
+        <button id="loginCancelBtn" class="btn gray" style="flex:1;display:none">Cancel</button>
+      </div>
+      <div id="loginError" class="muted" style="color:var(--danger);margin-top:10px;display:none"></div>
+      <div style="margin-top:12px">
+  <a
+    id="getAccessLink"
+    class="btn gray"
+    href="https://docs.google.com/forms/d/e/1FAIpQLSdGnHzyl-AHN8q6VjRmqeqo9dgIQu5PkQTv-8RULqudUD0D5w/viewform?usp=header"
+    target="_blank"
+    rel="noopener"
+    style="display:block;width:100%;text-align:center"
+  >
+    Request Access
+  </a>
+  <div class="muted" style="font-size:12px;margin-top:6px;text-align:center">
+    Don’t have an account? Request new access here.
+  </div>
+</div>
+
+<div style="margin-top:14px;font-size:13px;text-align:center;color:var(--muted)">
+  <div style="font-weight:600;color:#111827">Contact Support</div>
+  <div>📞 +1(803)346-6904</div>
+  <div>
+    📧 <a href="mailto:callbridge.2025@gmail.com" style="color:var(--accent);text-decoration:none">
+      callbridge.2025@gmail.com
+    </a>
+  </div>
+</div>
+
+
+    </div>
+  </div>
+
+    
+    <!-- Change Password Modal -->
+  <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);z-index:10001;align-items:center;justify-content:center">
+    <div class="modalCard" style="width:360px;text-align:left">
+      <div style="font-weight:700;font-size:18px">Change Password</div>
+      <div class="muted" style="margin-top:6px">Enter your old password and choose a new one.</div>
+      <input id="changeOld" placeholder="Old password" type="password" />
+      <input id="changeNew" placeholder="New password" type="password" />
+      <input id="changeConfirm" placeholder="Confirm new password" type="password" />
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button id="changeSubmitBtn" class="btn call" style="flex:1" type="button">Submit</button>
+        <button id="changeCancelBtn" class="btn gray" style="flex:1" type="button">Cancel</button>
+      </div>
+      <div id="changeError" class="muted" style="color:var(--danger);margin-top:10px;display:none"></div>
+      <div id="changeSuccess" class="muted" style="color:var(--green);margin-top:10px;display:none"></div>
+    </div>
+  </div>
+  
+
+  <!-- Ringtone (tiny silent audio placeholder that browsers allow to preload) -->
+  <audio id="ringtoneAudio" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" preload="auto"></audio>
+
+<script>
+/* ================= CONFIG ================= */
+const API_BASE = "https://callbridge.onrender.com";
+
+/* small helpers */
+const $ = id => document.getElementById(id);
+const setText = (id, txt) => { const el = $(id); if (el) el.innerText = txt; };
+  /* phone display formatter: ensures leading + when appropriate */
+/* phone display formatter:
+   - US (+1XXXXXXXXXX) -> (XXX) XXX-XXXX
+   - Plain 10 digits   -> assume US, show pretty
+   - Other lengths     -> ensure leading + and show as-is
+*/
+function showE164(n){
+  if (n == null) return '—';
+  const raw = String(n).trim();
+  if (raw === '') return '—';
+
+  // Normalize to something with + for display
+  let e164 = raw;
+  if (!raw.startsWith('+')) {
+    if (/^\d{10}$/.test(raw)) e164 = `+1${raw}`;        // US 10-digit
+    else if (/^\d{11,15}$/.test(raw)) e164 = `+${raw}`; // long digits
+  }
+
+  // Pretty print US numbers
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  if (m) return `(${m[1]}) ${m[2]}-${m[3]}`;
+
+  // Non-US: just show normalized E.164
+  return e164;
+}
+
+
+/* app state */
+/* app state */
+let device = null;
+let inCall = false;      // call currently active (connected or dialing)
+let callConnected = false; // <-- NEW: audio bridged & DTMF should work
+let activeConn = null;
+let incomingConn = null;
+let currentUser = null;
+let assignedNumber = "";
+let callStartTs = 0;
+let timerInterval = null;
+let wfRaf = null;
+let historyPollInterval = null;
+let localStream = null;
+  // SMS chat state
+let smsLogs = [];
+let currentThreadNumber = "";
+let smsAttachmentUrl = "";   // URL of uploaded file for MMS
+
+
+
+/* auth helpers */
+function getAuthToken(){ return localStorage.getItem("auth_token"); }
+function setAuthToken(t){ if(t) localStorage.setItem("auth_token", t); else localStorage.removeItem("auth_token"); }
+function authHeaders(){ const t = getAuthToken(); return t ? { "Authorization": "Bearer " + t } : {}; }
+
+/* ---------- mic permission ---------- */
+async function ensureMic() {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    alert("Microphone APIs unavailable in this browser.");
+    return false;
+  }
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    localStream = s;
+    console.log("Microphone available");
+    return true;
+  } catch (e) {
+    console.warn("Mic permission denied or failed", e);
+    return false;
+  }
+}
+
+/* ---------- login / logout ---------- */
+function showLoginModal(){ $("loginModal").style.display = "flex"; }
+function hideLoginModal(){ $("loginModal").style.display = "none"; }
+
+async function performLogin(){
+  $("loginError").style.display = "none";
+  const email = $("loginEmail").value.trim();
+  const password = $("loginPassword").value;
+  if(!email || !password){ $("loginError").innerText="Enter email & password"; $("loginError").style.display="block"; return; }
+  try{
+    const res = await fetch(`${API_BASE}/login`, {
+      method: "POST", headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    if(!res.ok){ const txt = await res.text(); $("loginError").innerText = txt || "Login failed"; $("loginError").style.display="block"; return; }
+    const data = await res.json();
+    if(!data || !data.token){ $("loginError").innerText="Invalid server response"; $("loginError").style.display="block"; return; }
+
+    setAuthToken(data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    currentUser = data.user;
+    hideLoginModal();
+
+    // request mic permission (user gesture)
+    const micOk = await ensureMic();
+    if (!micOk) alert("Please allow microphone access to use calls.");
+
+    // after login init
+    await postLoginInit();
+  } catch(e){
+    console.error("performLogin error", e);
+    $("loginError").innerText="Network error"; $("loginError").style.display="block";
+  }
+}
+
+async function performLogout(){
+  setAuthToken(null);
+  localStorage.removeItem("user");
+  currentUser = null;
+  if (historyPollInterval) clearInterval(historyPollInterval);
+  try { if (device) device.destroy(); } catch (e) {}
+  device = null;
+  showLoginModal();
+}
+
+/* ---------- call-save ---------- */
+async function remoteSaveCall(payload){
+ const emailQS = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+const ep = `${API_BASE}/save-call${emailQS}`;
+
+  try{
+    const res = await fetch(ep, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()),
+      body: JSON.stringify(payload)
+    });
+    if(res.ok) console.log("Saved call to", ep);
+    else console.warn("Save failed", res.status);
+  }catch(e){
+    console.warn("Save call error", e);
+  }
+}
+
+/* ---------- profile ---------- */
+async function loadProfile(){
+  try{
+    const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    if(!savedUser.email) return;
+    const res = await fetch(`${API_BASE}/profile`, {
+      method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email: savedUser.email })
+    });
+    if(!res.ok){ console.warn("Profile fetch failed", res.status); return; }
+    const p = await res.json();
+    currentUser = p;
+    setText("pEmail", p.email || "—");
+    setText("pNumber", showE164(p.assigned_number));
+    setText("pStatus", p.role || "Active");
+    setText("pExpiry", p.expiry_date ? new Date(p.expiry_date).toLocaleString() : "—");
+    assignedNumber = p.assigned_number || "";
+    setText("callerNumber", showE164(assignedNumber));
+  }catch(e){ console.error("loadProfile error", e); }
+}
+
+/* ---------- safe Twilio init (waits for SDK if needed) ---------- */
+async function safeInitTwilioDevice(tokenJson){
+  // tokenJson is object { token: "...", callerId: "..." }
+  try{
+    // wait up to ~5s for Twilio to be defined
+    let tries = 0;
+    while ((typeof Twilio === "undefined" || !Twilio.Device) && tries < 10){
+      await new Promise(r => setTimeout(r, 500));
+      tries++;
+    }
+    if (typeof Twilio === "undefined" || !Twilio.Device){
+      console.error("Twilio SDK failed to load.");
+      return;
+    }
+
+    if (!tokenJson || !tokenJson.token){
+      console.error("No token provided for Twilio device.");
+      return;
+    }
+
+    assignedNumber = tokenJson.callerId || assignedNumber;
+    setText("callerNumber", assignedNumber || "—");
+
+    try { if(device){ device.destroy(); device = null; } } catch(e){ console.warn(e); }
+
+    device = new Twilio.Device(tokenJson.token, { codecPreferences: ["opus","pcmu"], debug: false });
+console.log("Twilio.Device (v2) created");
+device.register(); // <-- IMPORTANT
+
+
+    device.on("ready", () => console.log("✅ Twilio Device ready"));
+    device.on("error", (err) => console.error("Twilio Device error:", err));
+
+    // incoming (do NOT auto-accept)
+    device.on("incoming", (connection) => {
+      incomingConn = connection;
+      $("incomingFrom").innerText = "From: " + showE164(connection.parameters?.From || "");
+      $("incomingModal").style.display = "flex";
+      try {
+        const ringtone = $("ringtoneAudio");
+        ringtone.currentTime = 0; ringtone.loop = true;
+        ringtone.play().catch(e => console.warn("Ringtone blocked", e));
+      } catch(e){ console.warn("Ringtone play error", e); }
+    });
+
+    device.on("disconnect", (c) => {
+      console.log("Device disconnect event", c);
+    });
+
+  }catch(e){
+    console.error("safeInitTwilioDevice error", e);
+  }
+}
+
+/* ---------- init device by requesting token from server ---------- */
+async function initTwilioDevice(){
+  try{
+    if(!currentUser || !currentUser.id){ console.warn("No user for twilio init"); return; }
+    const resp = await fetch(`${API_BASE}/twilio-token`, {
+      method: "POST", headers: Object.assign({ "Content-Type":"application/json" }, authHeaders()), body: JSON.stringify({ user_id: currentUser.id })
+    });
+    if(!resp.ok){ console.error("/twilio-token returned", resp.status); return; }
+    const json = await resp.json();
+    await safeInitTwilioDevice(json);
+  }catch(e){ console.error("initTwilioDevice error", e); }
+}
+
+/* ---------- outgoing call ---------- */
+async function startCall(){
+  const number = $("dialInput").value.trim();
+  if (!number) {
+    alert("Enter a number to call.");
+    return;
+  }
+
+  if (!localStream) {
+    const ok = await ensureMic();
+    if (!ok) {
+      alert("Allow microphone to place calls.");
+      return;
+    }
+  }
+
+  if (!device) {
+    await initTwilioDevice();
+    if (!device) {
+      alert("Twilio device initialization failed.");
+      return;
+    }
+  }
+
+  try {
+    // log "initiated" to Google Sheet
+    await remoteSaveCall({
+      user_email: currentUser && currentUser.email,
+      call_type: "outgoing",
+      from_number: assignedNumber || "",
+      to_number: number,
+      status: "initiated",
+      created_at: new Date().toISOString()
+    });
+
+    // 🔑 IMPORTANT: wait for the Call object here
+    const conn = await device.connect({ params: { To: number } });
+    activeConn = conn;            // ✅ this is now a Call, not a Promise
+    inCall = true;
+    callConnected = false;        // will turn true on "accept"
+
+    $("activeArea").style.display = "flex";
+    $("hangupBtn").style.display = "inline-block";
+    setText("activeLabel", showE164(number) || "In Call");
+    startTimer();
+    renderWaveform();
+
+    try {
+      $("ringtoneAudio").pause();
+      $("ringtoneAudio").currentTime = 0;
+    } catch (e) {}
+
+    // Wire call events
+    if (activeConn && typeof activeConn.on === "function") {
+      activeConn.on("accept", () => {
+        callConnected = true;
+        callStartTs = Date.now();
+        console.log("Call accepted, DTMF enabled");
+      });
+
+      activeConn.on("disconnect", async () => {
+        callConnected = false;
+        const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
+        await remoteSaveCall({
+          user_email: currentUser && currentUser.email,
+          call_type: "outgoing",
+          from_number: assignedNumber || "",
+          to_number: number,
+          status: "completed",
+          created_at: new Date().toISOString(),
+          duration
+        });
+
+        stopCallUI();
+        refreshHistory();
+      });
+
+      activeConn.on("error", (err) => {
+        console.error("connection error", err);
+        callConnected = false;
+        stopCallUI();
+      });
+    }
+  } catch (e) {
+    console.error("startCall error", e);
+    alert("Failed to start call.");
+  }
+}
+
+/* ---------- answer/decline incoming ---------- */
+async function answerIncoming(){
+  if(!incomingConn) return;
+  try{
+    try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){}
+    $("incomingModal").style.display = "none";
+
+    if(!localStream){
+      const ok = await ensureMic();
+      if(!ok){ alert("Allow microphone to answer."); return; }
+    }
+
+    if(typeof incomingConn.accept === 'function') incomingConn.accept();
+    else if(typeof incomingConn.acceptConnection === 'function') incomingConn.acceptConnection();
+    activeConn = incomingConn; incomingConn = null;
+
+    $("activeArea").style.display = "flex";
+    $("hangupBtn").style.display = "inline-block";
+    inCall = true;   // <-- NEW
+    setText("activeLabel", showE164(activeConn.parameters?.From || "") || "In Call");
+    startTimer();
+    renderWaveform();
+
+    await remoteSaveCall({
+  user_email: currentUser && currentUser.email,
+  call_type: "incoming",
+  from_number: activeConn.parameters?.From || "",
+  to_number: assignedNumber || "",
+  status: "answered",
+  created_at: new Date().toISOString()
+});
+
+
+    if (activeConn && typeof activeConn.on === 'function') {
+  // for incoming, once we accept, we can treat it as connected
+  callConnected = true;
+  console.log("Incoming call accepted, DTMF enabled");
+
+  activeConn.on("disconnect", async () => {
+    callConnected = false;
+    const duration = Math.max(0, Math.floor((Date.now() - callStartTs) / 1000));
+    await remoteSaveCall({
+      user_email: currentUser && currentUser.email,
+      call_type: "incoming",
+      from_number: activeConn.parameters?.From || "",
+      to_number: assignedNumber || "",
+      status: "completed",
+      created_at: new Date().toISOString(),
+      duration
+    });
+
+    stopCallUI();
+    refreshHistory();
+  });
+}
+  }catch(e){ console.warn("answerIncoming error", e); }
+}
+
+async function declineIncoming(){
+  if(!incomingConn) return;
+  try{ try{ $("ringtoneAudio").pause(); $("ringtoneAudio").currentTime = 0; } catch(e){} 
+    if(typeof incomingConn.reject === 'function') incomingConn.reject();
+    else if(typeof incomingConn.rejectConnection === 'function') incomingConn.rejectConnection();
+  }catch(e){ console.warn("declineIncoming error", e); }
+  $("incomingModal").style.display = "none";
+  await remoteSaveCall({
+  user_email: currentUser && currentUser.email,
+  call_type: "incoming",
+  from_number: incomingConn?.parameters?.From || "",
+  to_number: assignedNumber || "",
+  status: "missed",
+  created_at: new Date().toISOString(),
+  duration: 0
+});
+
+  incomingConn = null;
+}
+
+/* ---------- hangup ---------- */
+function hangUp(){
+  try{
+    if(activeConn && typeof activeConn.disconnect === 'function') activeConn.disconnect();
+    else if(device && typeof device.disconnectAll === 'function') device.disconnectAll();
+  }catch(e){ console.warn("hangUp error", e); }
+  stopCallUI();
+}
+
+/* ---------- stop UI ---------- */
+function stopCallUI(){
+  $("dialpadArea").style.display = "flex";
+  $("activeArea").style.display = "none";
+  $("hangupBtn").style.display = "none";
+  clearWaveform();
+  stopTimer();
+  activeConn = null;
+  inCall = false;  // <-- NEW
+}
+
+/* ---------- mute / hold ---------- */
+function toggleMute(){
+  if(!activeConn && !localStream) return;
+  try{
+    if(activeConn && typeof activeConn.mute === "function"){
+      const muted = typeof activeConn.isMuted === 'function' ? activeConn.isMuted() : !!activeConn._muted;
+      activeConn.mute(!muted);
+      $("muteBtn").innerText = (!muted) ? "Unmute" : "Mute";
+      return;
+    }
+    const s = localStream || (activeConn && (activeConn.mediaStream || activeConn._mediaStream));
+    if(s && s.getAudioTracks){
+      const curr = s.getAudioTracks()[0].enabled;
+      s.getAudioTracks().forEach(t=>t.enabled = !curr);
+      $("muteBtn").innerText = curr ? "Unmute" : "Mute";
+    }
+  }catch(e){ console.warn(e); }
+}
+
+function toggleHold(){
+  if(!activeConn && !localStream) return;
+  try{
+    const s = localStream || (activeConn && (activeConn.mediaStream || activeConn._mediaStream));
+    if(s && s.getAudioTracks){
+      const curr = s.getAudioTracks()[0].enabled;
+      s.getAudioTracks().forEach(t=>t.enabled = !curr);
+      $("holdBtn").innerText = (!curr) ? "Resume" : "Hold";
+    }
+  }catch(e){ console.warn(e); }
+}
+
+/* ---------- speaker / handfree ---------- */
+window._speakerOn = false;
+
+async function toggleSpeaker() {
+  try {
+    if (!device || !device.audio) {
+      alert("Speaker toggle not available yet.");
+      return;
+    }
+
+    // Twilio Voice SDK v2 exposes available outputs and a speakerDevices controller
+    const outputsMap = device.audio.availableOutputDevices;   // Map<string, MediaDeviceInfo>
+    const speakerCtl  = device.audio.speakerDevices;          // controller with set()/clear()
+
+    if (!outputsMap || !speakerCtl) {
+      alert("Speaker control not supported in this browser.");
+      return;
+    }
+
+    if (!window._speakerOn) {
+      // Route audio to ALL available output devices (commonly the loudspeaker on Android Chrome/WebView)
+      const allOutputDevices = Array.from(outputsMap.values());
+      if (allOutputDevices.length === 0) {
+        alert("No audio output devices found.");
+        return;
+      }
+      await speakerCtl.set(allOutputDevices);
+      window._speakerOn = true;
+      $("speakerBtn").innerText = "Speaker Off";
+    } else {
+      // Clear routing override → go back to default (earpiece / system default)
+      await speakerCtl.clear();
+      window._speakerOn = false;
+      $("speakerBtn").innerText = "Speaker On";
+    }
+  } catch (e) {
+    console.warn("toggleSpeaker error:", e);
+    alert("Speaker toggle not supported on this device/browser.");
+  }
+}
+
+
+/* ---------- waveform ---------- */
+function renderWaveform(){
+  const wrap = $("waveWrap");
+  wrap.innerHTML = "";
+  for(let i=0;i<6;i++){
+    const b = document.createElement("div");
+    b.style.width='6px';
+    b.style.background='#60a5fa';
+    b.style.borderRadius='3px';
+    b.style.height=(8+Math.random()*30)+"px";
+    b.style.transition='height 120ms';
+    wrap.appendChild(b);
+  }
+  (function animate(){ const bars=wrap.children; for(let i=0;i<bars.length;i++) bars[i].style.height = (8+Math.random()*36)+"px"; wfRaf = requestAnimationFrame(animate); })();
+  wrap.style.display="flex";
+}
+function clearWaveform(){ if(wfRaf) cancelAnimationFrame(wfRaf); $("waveWrap").innerHTML=""; $("waveWrap").style.display="none"; }
+
+/* ---------- timer ---------- */
+function startTimer(){ callStartTs = Date.now(); stopTimer(); timerInterval = setInterval(()=>{ const s = Math.floor((Date.now()-callStartTs)/1000); const mm = String(Math.floor(s/60)).padStart(2,'0'); const ss = String(s%60).padStart(2,'0'); setText("callTimer", mm+":"+ss); },500); }
+function stopTimer(){ if(timerInterval){ clearInterval(timerInterval); timerInterval=null; setText("callTimer","00:00"); } }
+
+/* ---------- history ---------- */
+/* ---------- history ---------- */
+async function refreshHistory(){
+  try{
+    if(!currentUser) return;
+    const email = currentUser && currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/calls${email}`, {
+      method: "GET",
+      headers: Object.assign({}, authHeaders())
+    });
+
+    if(!res.ok){
+      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
+      return;
+    }
+    const data = await res.json();
+    if(!Array.isArray(data) || data.length===0){
+      $("historyList").innerHTML = '<div class="muted">No calls yet</div>';
+      return;
+    }
+    renderHistoryItems(data);
+  }catch(e){
+    console.error("refreshHistory error", e);
+    $("historyList").innerHTML = '<div class="muted">Error loading history</div>';
+  }
+}
+
+function renderHistoryItems(items){
+  const container = $("historyList");
+  container.innerHTML = "";
+
+  items.forEach(it => {
+    const div = document.createElement("div");
+    div.className = "history-item";
+
+    const type = String(it.call_type || it.type || "").toLowerCase();
+
+    // choose which number to display
+    let displayNum = "";
+    if (type === "incoming") {
+      displayNum = it.from_number || it.other_number || it.phone_number || it.to_number || "";
+    } else if (type === "outgoing") {
+      displayNum = it.to_number || it.other_number || it.phone_number || it.from_number || "";
+    } else {
+      // fallback if type missing
+      displayNum = it.to_number || it.from_number || it.other_number || it.phone_number || "";
+    }
+
+    // left side
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const badge = document.createElement("div");
+    badge.className = "badge";
+    badge.innerText = (it.call_type || it.type || "UNKNOWN").toUpperCase();
+
+    const main = document.createElement("div");
+    main.style.fontWeight = 700;
+    main.innerText = showE164(displayNum);
+
+    const sub = document.createElement("div");
+    sub.className = "muted";
+    sub.style.fontSize = "12px";
+    sub.innerText = it.status || "";
+
+    left.appendChild(badge);
+    left.appendChild(main);
+    left.appendChild(sub);
+
+    // right side
+    const right = document.createElement("div");
+    right.style.textAlign = "right";
+    right.innerHTML = `
+      <div class="muted">${new Date(it.created_at || it.started_at || Date.now()).toLocaleString()}</div>
+      <div style="font-weight:700;margin-top:6px">${(it.duration || 0)} s</div>
+    `;
+
+    div.appendChild(left);
+    div.appendChild(right);
+    container.appendChild(div);
+  });
+}
+
+/* ---------- SMS (chat-style) ---------- */
+
+// Helper: figure out the "other party" number for a log row
+function smsOtherParty(m){
+  const dir = (m.direction || "").toLowerCase();
+  if (dir === "incoming") {
+    return m.from_number || m.from || "";
+  } else {
+    return m.to_number || m.to || m.from_number || "";
+  }
+}
+
+function smsTimestamp(m){
+  const raw = m.created_at || m.timestamp || "";
+  const d = raw ? new Date(raw) : new Date();
+  return d.toLocaleString();
+}
+
+// Render left-side conversation list
+function renderSmsThreads(){
+  const container = $("smsThreadsList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(smsLogs) || smsLogs.length === 0){
+    container.innerHTML = '<div class="muted" style="font-size:12px">No messages yet</div>';
+    return;
+  }
+
+  // Build a map: otherNumber -> last message
+  const threadsMap = new Map();
+  // Iterate oldest -> newest so the last one wins
+  smsLogs.forEach(m => {
+    const other = smsOtherParty(m);
+    if (!other) return;
+    threadsMap.set(other, m); // last message for that number
+  });
+
+  const threads = Array.from(threadsMap.entries()).map(([number, lastMsg]) => ({
+    number,
+    lastMsg
+  }));
+
+  // Sort newest first
+  threads.sort((a,b) => {
+    const ta = new Date(a.lastMsg.created_at || a.lastMsg.timestamp || 0).getTime();
+    const tb = new Date(b.lastMsg.created_at || b.lastMsg.timestamp || 0).getTime();
+    return tb - ta;
+  });
+
+  threads.forEach(t => {
+    const div = document.createElement("div");
+    div.className = "threadItem";
+    if (currentThreadNumber && t.number === currentThreadNumber){
+      div.classList.add("active");
+    }
+
+    const title = document.createElement("div");
+    title.className = "threadItemTitle";
+    title.innerText = showE164(t.number);
+
+        const snippet = document.createElement("div");
+    snippet.className = "threadItemSnippet";
+
+    const lastBody = (t.lastMsg.body || "").trim();
+    const lastAttachment = t.lastMsg.attachment_url || t.lastMsg.attachmentUrl || "";
+
+    if (lastBody) {
+      snippet.innerText = lastBody.slice(0, 60);
+    } else if (lastAttachment) {
+      snippet.innerText = "📎 Attachment";
+    } else {
+      snippet.innerText = "—";
+    }
+
+
+
+    div.appendChild(title);
+    div.appendChild(snippet);
+
+    div.addEventListener("click", () => {
+  openSmsChat(t.number);   // open chat + hide list
+});
+
+
+    container.appendChild(div);
+  });
+}
+
+// Render right-side chat messages for selected thread
+function renderSmsThreadMessages() {
+  const container = $("smsThreadMessages");
+  const header = $("smsThreadHeader");
+  if (!container || !header) return;
+
+  container.innerHTML = "";
+
+  if (!currentThreadNumber) {
+    header.innerText = "No chat selected";
+    container.innerHTML =
+      '<div class="muted" style="font-size:12px">Select a conversation on the left, or start a new message…</div>';
+    return;
+  }
+
+  header.innerText = showE164(currentThreadNumber);
+
+  // Filter logs for this conversation
+  let msgs = smsLogs.filter(m => smsOtherParty(m) === currentThreadNumber);
+
+  // Sort oldest → newest (WhatsApp style)
+  msgs.sort((a, b) => {
+    const ta = new Date(a.created_at || a.timestamp || 0).getTime();
+    const tb = new Date(b.created_at || b.timestamp || 0).getTime();
+    return ta - tb;
+  });
+
+  if (msgs.length === 0) {
+    container.innerHTML =
+      '<div class="muted" style="font-size:12px">No messages yet.</div>';
+    return;
+  }
+
+  msgs.forEach(m => {
+    const dir = (m.direction || "").toLowerCase();
+    const bubble = document.createElement("div");
+    bubble.className = "smsBubble " + (dir === "incoming" ? "them" : "me");
+
+    /* ---- 1) ATTACHMENT (image or file) ---- */
+    const attachmentUrl =
+      m.attachment_url || m.attachmentUrl || "";
+
+    if (attachmentUrl) {
+      const lower = attachmentUrl.toLowerCase();
+      const isImage =
+        /\.(jpg|jpeg|png|gif|webp)$/i.test(lower);
+
+      if (isImage) {
+        const img = document.createElement("img");
+        img.src = attachmentUrl;
+        img.style.maxWidth = "180px";
+        img.style.borderRadius = "8px";
+        img.style.display = "block";
+        img.style.cursor = "pointer";
+        img.addEventListener("click", () => {
+          const a = document.createElement("a");
+          a.href = attachmentUrl;
+          a.download = "";
+          a.click();
+        });
+        bubble.appendChild(img);
+      } else {
+        const btn = document.createElement("button");
+        btn.className = "btn gray";
+        btn.style.padding = "4px 8px";
+        btn.style.fontSize = "11px";
+        btn.innerText = "⬇ Download file";
+        btn.addEventListener("click", () => {
+          const a = document.createElement("a");
+          a.href = attachmentUrl;
+          a.download = "";
+          a.click();
+        });
+        bubble.appendChild(btn);
+      }
+    }
+
+    /* ---- 2) BODY TEXT ---- */
+    if (m.body && m.body.trim() !== "") {
+      const bodyDiv = document.createElement("div");
+      bodyDiv.innerText = m.body;
+      bubble.appendChild(bodyDiv);
+    }
+
+    /* ---- 3) TIMESTAMP ---- */
+    const time = document.createElement("div");
+    time.className = "smsBubbleTime";
+    time.innerText = smsTimestamp(m);
+    bubble.appendChild(time);
+
+    container.appendChild(bubble);
+  });
+
+  // Scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+
+// Fetch logs and refresh UI
+async function refreshSms(){
+  try {
+    if (!currentUser) return;
+    const email = currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/sms-logs${email}`, {
+      method: "GET",
+      headers: Object.assign({}, authHeaders())
+    });
+    if (!res.ok){
+      console.warn("sms-logs error", res.status);
+      return;
+    }
+    const data = await res.json();
+    smsLogs = Array.isArray(data) ? data : [];
+
+
+    renderSmsThreads();
+    renderSmsThreadMessages();
+  } catch (e) {
+    console.error("refreshSms error", e);
+  }
+}
+
+async function sendSms(){
+  $("smsError").style.display = "none";
+  $("smsSuccess").style.display = "none";
+
+  const typedTo = $("smsTo").value.trim();
+  const to = typedTo || currentThreadNumber;
+  const body = $("smsBody").value.trim();
+
+  // ✅ allow: text only, file only, or both
+  if (!to || (!body && !smsAttachmentUrl)) {
+    $("smsError").innerText = "Number and message or attachment are required.";
+    $("smsError").style.display = "block";
+    return;
+  }
+
+  try {
+    const emailQS = currentUser && currentUser.email
+      ? `?email=${encodeURIComponent(currentUser.email)}`
+      : "";
+
+    const payload = {
+      to,
+      body,
+      attachmentUrl: smsAttachmentUrl || null,   // <-- send URL if present
+    };
+
+    const res = await fetch(`${API_BASE}/send-sms${emailQS}`, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      $("smsError").innerText = json.error || `Send failed (${res.status})`;
+      $("smsError").style.display = "block";
+      return;
+    }
+
+    $("smsSuccess").innerText = "Message sent.";
+    $("smsSuccess").style.display = "block";
+    $("smsBody").value = "";
+
+    // ✅ clear attachment after send
+    smsAttachmentUrl = "";               // <-- resets for next message
+    $("smsFile").value = "";
+    $("smsFileName").innerText = "";
+
+    currentThreadNumber = to;
+    $("smsTo").value = to;
+
+    await refreshSms();
+  } catch (e) {
+    console.error("sendSms error", e);
+    $("smsError").innerText = "Network error";
+    $("smsError").style.display = "block";
+  }
+}
+
+// ---------- SMS layout helpers: open/close chat ----------
+
+function openSmsChat(number = "") {
+  currentThreadNumber = number;
+
+  const layout   = $("smsLayout");
+  const listPane = $("smsThreadsPane");
+  const chatPane = $("smsChatPane");
+
+  // When chat opens -> remove "list-only", hide list, show chat full-width
+  if (layout)   layout.classList.remove("list-only");
+  if (listPane) listPane.style.display = "none";
+  if (chatPane) chatPane.style.display = "flex";
+
+  // Reset composer fields
+  $("smsTo").value = number || "";
+  $("smsBody").value = "";
+  if ($("smsFile"))      $("smsFile").value = "";
+  if ($("smsFileName"))  $("smsFileName").innerText = "";
+  smsAttachmentUrl = "";
+
+  if (number) {
+    // Existing conversation -> let renderSmsThreadMessages show bubbles
+    renderSmsThreadMessages();
+  } else {
+    // New message mode
+    $("smsThreadHeader").innerText = "New Message";
+    $("smsThreadMessages").innerHTML =
+      '<div class="muted" style="font-size:12px">Start a new message…</div>';
+  }
+
+  // Update left list highlight
+  renderSmsThreads();
+}
+
+function closeSmsChat() {
+  const layout   = $("smsLayout");
+  const listPane = $("smsThreadsPane");
+  const chatPane = $("smsChatPane");
+
+  // Back to list-only mode
+  if (layout)   layout.classList.add("list-only");
+  if (listPane) listPane.style.display = "block";
+  if (chatPane) chatPane.style.display = "none";
+
+  // Clear composer but keep currentThreadNumber (so highlight still makes sense)
+  $("smsTo").value = "";
+  $("smsBody").value = "";
+  if ($("smsFile"))      $("smsFile").value = "";
+  if ($("smsFileName"))  $("smsFileName").innerText = "";
+}
+
+function handleNewChat() {
+  currentThreadNumber = ""; // new conversation
+  $("smsTo").value = "";
+  $("smsBody").value = "";
+  if ($("smsFile"))      $("smsFile").value = "";
+  if ($("smsFileName"))  $("smsFileName").innerText = "";
+
+  $("smsThreadHeader").innerText = "New Message";
+  $("smsThreadMessages").innerHTML =
+    '<div class="muted" style="font-size:12px">Start a new message…</div>';
+
+  openSmsChat(""); // switch layout into chat mode
+}
+
+
+
+
+/* ---------- Voicemails ---------- */
+async function refreshVoicemails(){
+  try {
+    if (!currentUser) return;
+    const email = currentUser.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+    const res = await fetch(`${API_BASE}/voicemails${email}`, {
+      method: "GET",
+      headers: Object.assign({}, authHeaders())
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderVoicemails(data);
+  } catch (e) {
+    console.error("refreshVoicemails error", e);
+  }
+}
+
+function renderVoicemails(items){
+  const container = $("vmList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(items) || items.length === 0) {
+    container.innerHTML = '<div class="muted">No voicemails yet</div>';
+    return;
+  }
+
+  items.forEach(vm => {
+    const div = document.createElement("div");
+    div.className = "history-item";
+
+    // LEFT SIDE (who called, when, to which number)
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.flexDirection = "column";
+
+    const badge = document.createElement("div");
+    badge.className = "badge";
+    badge.innerText = "VOICEMAIL";
+
+    const main = document.createElement("div");
+    main.style.fontWeight = 700;
+    // Show the caller (From)
+    main.innerText = showE164(vm.from_number || vm.from || "");
+
+    const sub = document.createElement("div");
+    sub.className = "muted";
+    sub.style.fontSize = "12px";
+
+    const toNumber = showE164(vm.to_number || vm.to || "");
+    const ts = new Date(vm.created_at || vm.timestamp || Date.now()).toLocaleString();
+    sub.innerText = `To ${toNumber} · ${ts}`;
+
+    left.appendChild(badge);
+    left.appendChild(main);
+    left.appendChild(sub);
+
+    // RIGHT SIDE (Play + duration)
+    const right = document.createElement("div");
+    right.style.textAlign = "right";
+
+    const playBtn = document.createElement("button");
+    playBtn.className = "btn gray";
+    playBtn.style.padding = "6px 10px";
+    playBtn.type = "button";
+    playBtn.innerText = "▶ Play";
+
+    playBtn.addEventListener("click", () => {
+      let url = (vm.recording_url || "").trim();
+      if (!url) {
+        alert("No recording URL available.");
+        return;
+      }
+
+      // recording_url looks like:
+      // https://api.twilio.com/2010-04-01/Accounts/AC.../Recordings/RExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      // We just need the last part (the RE... SID)
+      const parts = url.split("/");
+      const last = parts[parts.length - 1] || "";
+      const recordingSid = last.split("?")[0];
+
+      if (!recordingSid) {
+        alert("Could not parse recording SID.");
+        return;
+      }
+
+      // 🔊 Use your backend proxy – no Twilio login needed
+      const audio = new Audio(`${API_BASE}/vm-audio/${recordingSid}`);
+      audio.play().catch(err => {
+        console.warn("Audio play failed", err);
+        alert("Unable to play voicemail on this device/browser.");
+      });
+    });
+
+    const dur = document.createElement("div");
+    dur.style.marginTop = "6px";
+    dur.style.fontWeight = "700";
+    dur.innerText = (vm.duration || 0) + " s";
+
+    right.appendChild(playBtn);
+    right.appendChild(dur);
+
+    div.appendChild(left);
+    div.appendChild(right);
+    container.appendChild(div);
+  });
+}
+
+
+
+/* ---------- polling ---------- */
+function startHistoryPolling(){
+  if(historyPollInterval) clearInterval(historyPollInterval);
+  historyPollInterval = setInterval(() => {
+    refreshHistory();
+    refreshSms();
+    refreshVoicemails();
+  }, 8000);
+}
+
+function stopHistoryPolling(){ if(historyPollInterval) clearInterval(historyPollInterval); historyPollInterval=null; }
+
+/* ---------- UI wiring: Dialpad + DTMF ---------- */
+document.addEventListener("click", (e) => {
+  const k = e.target.closest("[data-key]");
+  if (!k) return;
+
+  const digit = k.getAttribute("data-key") || "";
+
+  // Debug so we can see what's happening
+  console.log("Key pressed:", digit, "inCall=", inCall, "activeConn:", !!activeConn);
+
+  // If NOT in a call → behave like a normal dialpad (update input box)
+  if (!inCall || !activeConn) {
+    $("dialInput").value += digit;
+    return;
+  }
+
+  // We ARE in a call here → send DTMF instead of touching the input
+  if (digit === "+") {
+    // '+' has no DTMF representation, so ignore it during calls
+    console.log("Ignoring '+' during active call (no DTMF tone)");
+    return;
+  }
+
+  if (typeof activeConn.sendDigits === "function") {
+    try {
+      activeConn.sendDigits(digit);
+      console.log("DTMF sent:", digit);
+    } catch (err) {
+      console.warn("Failed to send DTMF:", err);
+    }
+  } else {
+    console.warn("activeConn has no sendDigits() method:", activeConn);
+  }
+});
+
+$("startCallBtn").addEventListener("click", startCall);
+$("hangupBtn").addEventListener("click", hangUp);
+$("muteBtn").addEventListener("click", toggleMute);
+$("holdBtn").addEventListener("click", toggleHold);
+$("answerBtn").addEventListener("click", answerIncoming);
+$("declineBtn").addEventListener("click", declineIncoming);
+$("logoutBtn").addEventListener("click", async ()=>{ await performLogout(); });
+$("speakerBtn").addEventListener("click", toggleSpeaker);
+// SMS
+$("smsNewChatBtn").addEventListener("click", handleNewChat);
+$("sendSmsBtn").addEventListener("click", sendSms);
+$("refreshSmsBtn").addEventListener("click", refreshSms);
+$("smsBackBtn").addEventListener("click", closeSmsChat);
+// open hidden file input when + is clicked
+document.getElementById('smsPlusBtn')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('smsFile')?.click();
+});
+
+
+// Handle file selection + upload
+$("smsFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+
+  // No file selected → clear
+  if (!file) {
+    smsAttachmentUrl = "";           // <-- clear attachment when no file
+    $("smsFileName").innerText = "";
+    return;
+  }
+
+  // Open file picker when + attach button is clicked
+const smsAttachBtn = $("smsAttachBtn");
+if (smsAttachBtn) {
+  smsAttachBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    const f = $("smsFile");
+    if (f) f.click();
+  });
+}
+
+
+  // Show file name
+  $("smsFileName").innerText = file.name;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch(`${API_BASE}/upload-sms-file`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok || !json.url) {
+      throw new Error(json.error || "Upload failed");
+    }
+
+    // ✅ this is where you set the URL from backend
+    smsAttachmentUrl = json.url;      // <-- smsAttachmentUrl = uploadedUrl;
+    console.log("Uploaded file URL:", smsAttachmentUrl);
+  } catch (err) {
+    console.error("SMS file upload error:", err);
+    smsAttachmentUrl = "";           // <-- clear if upload fails
+    $("smsFileName").innerText = "Upload failed";
+  }
+});
+
+
+
+// Tabs (SMS / Voicemails / Profile)
+const tabButtons = document.querySelectorAll(".tabBtn");
+tabButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    const tab = btn.getAttribute("data-tab");
+
+    ["sms", "voicemails", "profile"].forEach(t => {
+      const el = $(t + "Tab");
+      if (el) el.style.display = (t === tab ? "block" : "none");
+    });
+
+    tabButtons.forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  });
+});
+
+/* Login modal listeners */
+$("loginBtn").addEventListener("click", performLogin);
+$("loginPassword")?.addEventListener &&
+  $("loginPassword").addEventListener("keydown", (e) => {
+    if (e.key === 'Enter') performLogin();
+  });
+
+/* ---------- change password modal ---------- */
+function showChangePwdModal(){
+  $("changeError").style.display = "none";
+  $("changeSuccess").style.display = "none";
+  $("changeOld").value = "";
+  $("changeNew").value = "";
+  $("changeConfirm").value = "";
+  $("changePwdModal").style.display = "flex";
+}
+function hideChangePwdModal(){
+  $("changePwdModal").style.display = "none";
+}
+
+/* perform change password */
+async function performChangePassword(){
+  $("changeError").style.display = "none";
+  $("changeSuccess").style.display = "none";
+
+  const oldp = $("changeOld").value;
+  const newp = $("changeNew").value;
+  const conf = $("changeConfirm").value;
+
+  if(!oldp || !newp || !conf){ $("changeError").innerText = "All fields are required."; $("changeError").style.display = "block"; return; }
+  if(newp !== conf){ $("changeError").innerText = "New password and confirmation must match."; $("changeError").style.display = "block"; return; }
+  if(newp.length < 4){ $("changeError").innerText = "Choose a stronger password (min 4 chars)."; $("changeError").style.display = "block"; return; }
+
+  try{
+    const body = { old_password: oldp, new_password: newp, confirm_password: conf };
+
+    const token = getAuthToken();
+    let url = `${API_BASE}/change-password`;
+    if(!token && currentUser && currentUser.email){
+      url += `?email=${encodeURIComponent(currentUser.email)}`;
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify(body)
+    });
+
+    const json = await res.json().catch(()=>({}));
+
+    if(res.ok){
+      $("changeSuccess").innerText = (json && json.message) ? json.message : "Password changed successfully.";
+      $("changeSuccess").style.display = "block";
+      // Close after a short delay
+      setTimeout(()=>{ hideChangePwdModal(); }, 900);
+    } else {
+      const errMsg = (json && json.error) ? json.error : `Server returned ${res.status}`;
+      $("changeError").innerText = errMsg;
+      $("changeError").style.display = "block";
+    }
+  }catch(e){
+    console.error("performChangePassword error", e);
+    $("changeError").innerText = "Network error";
+    $("changeError").style.display = "block";
+  }
+}
+
+/* wire up change password UI */
+$("changePwdBtn").addEventListener("click", showChangePwdModal);
+$("changeCancelBtn").addEventListener("click", hideChangePwdModal);
+$("changeSubmitBtn").addEventListener("click", performChangePassword);
+
+
+/* ---------- after login ---------- */
+async function postLoginInit(){
+  try{
+    await loadProfile();
+    await initTwilioDevice(); // will call safeInitTwilioDevice internally
+    await refreshHistory();
+    await refreshSms();
+    await refreshVoicemails();
+    startHistoryPolling();
+  }catch(e){ console.error("postLoginInit error", e); }
+}
+
+
+/* ---------- app init (auto-login) ---------- */
+async function init(){
+  try{
+    const token = getAuthToken();
+    const savedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    if(token && savedUser.email){
+      console.log("🔁 Auto-login from localStorage");
+      currentUser = savedUser;
+      await loadProfile();
+      await refreshHistory();
+
+      // Try to obtain mic once (may be blocked); if blocked, init on first user gesture
+      try{
+        const micOk = await ensureMic();
+        if(micOk){
+          await initTwilioDevice();
+        } else {
+          console.warn("Mic not granted at auto-login; will init Twilio on first gesture.");
+          const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
+          document.addEventListener("click", gestureInit);
+        }
+      }catch(e){
+        console.warn("Auto-login mic check failed:", e);
+        const gestureInit = async () => { document.removeEventListener("click", gestureInit); const ok = await ensureMic(); if(ok) await initTwilioDevice(); };
+        document.addEventListener("click", gestureInit);
+      }
+
+      startHistoryPolling();
+      return;
+    }
+
+    console.warn("No saved session, showing login modal");
+    showLoginModal();
+  }catch(e){
+    console.error("init error", e);
+    showLoginModal();
+  }
+}
+
+// Warn before reload/close while a call is active
+window.addEventListener("beforeunload", (e) => {
+  if (inCall) {
+    e.preventDefault();
+    e.returnValue = ""; // shows the native "Leave site?" dialog
+  }
+});
+
+// If the user still leaves, disconnect cleanly so the far end hangs up
+window.addEventListener("pagehide", () => {
+  try { if (device) device.disconnectAll(); } catch {}
+});
+
+  
+init();
+</script>
+</body>
+</html>
