@@ -509,9 +509,9 @@ def get_calls():
     try:
         auth_email, viewer = require_auth_email(request)
 
-if not auth_email or not viewer:
-    return jsonify([]), 401
-
+        # 🔐 Must be authenticated and valid user
+        if not auth_email or not viewer:
+            return jsonify([]), 401
 
         # Admin check
         is_admin = str(viewer.get("role", "")).strip().lower() in {
@@ -522,25 +522,32 @@ if not auth_email or not viewer:
         calls = []
 
         for r in rows:
-            row = {
+            row_email = (r.get("User Email") or "").strip().lower()
+
+            # skip rows without owner
+            if not row_email:
+                continue
+
+            # authorization check
+            if not is_admin and row_email != auth_email:
+                continue
+
+            calls.append({
                 "created_at": r.get("Timestamp"),
                 "from_number": r.get("From"),
                 "to_number": r.get("To"),
                 "duration": r.get("Duration") or 0,
-                "user_email": (r.get("User Email") or "").strip().lower(),
+                "user_email": row_email,
                 "call_type": r.get("Call Type"),
                 "status": r.get("Notes") or r.get("Notes / Status"),
-            }
-
-            # 🔐 Authorization rule
-            if is_admin or row["user_email"] == auth_email:
-                calls.append(row)
+            })
 
         return jsonify(list(reversed(calls))), 200
 
     except Exception:
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 
